@@ -13,6 +13,7 @@ Ellis Brown
 
 import random
 import numpy as np
+from PIL import Image
 import torch
 from torchvision import transforms
 
@@ -179,7 +180,7 @@ def photometric_distort(image, boxes, classes):
             img (Image): image
             pix (np): image
         """
-        img.putdata(pix)
+        img = Image.fromarray(pix)
         img = img.convert('HSV')
         pix = np.array(img)
 
@@ -224,15 +225,16 @@ def photometric_distort(image, boxes, classes):
             img (Image): image
             pix (np): image
         """
-        img.putdata(pix)
+        img = Image.fromarray(pix)
         img = img.convert('RGB')
+        pix = np.array(img)
 
-    def rand_lighting_noise(img):
+    def rand_lighting_noise(pix):
         """random order img channels to add random lighting noise
         prob: 0.0
 
         Args:
-            img (Image): input image to be distorted
+            pix (np): input image to be distorted
         """
         channel_perms = ((0, 1, 2), (0, 2, 1),
                          (1, 0, 2), (1, 2, 0),
@@ -241,7 +243,9 @@ def photometric_distort(image, boxes, classes):
             swap = random.choice(channel_perms)
             # shuffle channels
             shuffle = SwapChannel(swap)
-            img = shuffle(img)
+            tns = torch.from_numpy(pix)
+            tns = shuffle(tns)
+            pix = tns.numpy()
 
     def apply_distorts(img):
         """Randomly applies all of the distortions defined above
@@ -250,7 +254,7 @@ def photometric_distort(image, boxes, classes):
             img (Image): input image to be distorted
         """
 
-        img = img.copy()  # PIL
+        img = img.copy()     # PIL
         pix = np.array(img)  # NP
 
         rand_brightness(pix)
@@ -266,11 +270,10 @@ def photometric_distort(image, boxes, classes):
             rand_hue(pix)
             convert_to_RGB(img, pix)
             rand_contrast(pix)
-            img.putdata(pix)
-        rand_lighting_noise(img)
+        rand_lighting_noise(pix)
+        return Image.fromarray(pix)
 
-    apply_distorts(image)
-    return image, boxes, classes
+    return apply_distorts(image), boxes, classes
 
 
 class TrainTransform(object):
@@ -278,7 +281,7 @@ class TrainTransform(object):
     help make the model more robust to various input object sizes and shapes
     during training.
 
-    sample-> photometric -> resize -> flip 
+    sample -> photometric -> resize -> flip
 
     TODO: complete all steps of augmentation
 
