@@ -11,7 +11,6 @@ from torch.utils.serialization import load_lua
 import torch.backends.cudnn as cudnn
 import os
 
-
 class SSD(nn.Module):
     """Single Shot Multibox Architecture
     The network is composed of a base VGG network followed by the
@@ -38,7 +37,7 @@ class SSD(nn.Module):
         self.num_classes = num_classes
         param=num_classes*3
         self.base = build_base(cfg[str(sz)] ,3)
-        self.version = v1 
+        self.version = v1
         self.box_layer = PriorBox(self.version)
         self.priors = Variable(self.box_layer.forward())
         # TODO: Build the rest of the sequentials in a for loop.
@@ -157,7 +156,6 @@ class SSD(nn.Module):
                 self.priors                                     # default boxes
                 )
         else:
-            print(self.priors.size())
             conf = conf.view(conf.size(0),-1,self.num_classes)
             loc = loc.view(loc.size(0),-1,4)
             output = (loc, conf, self.priors)

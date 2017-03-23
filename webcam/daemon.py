@@ -83,10 +83,10 @@ def predict(frame):
 # local model = checkpoint.model
 
 
-while true do
+while true:
     for filename in os.listdir(input_dir):
         if filename.endswith(input_ext):
-            in_path = os.path.join(input_dir, filename))
+            in_path = os.path.join(input_dir, filename)
             base, ext = os.path.splitext(filename)
             out_path = output_dir + base + '.json'
             print('Running model on image ' + in_path)
@@ -103,8 +103,7 @@ while true do
             #     width = ori_W,
             #   }
 
-              os.remove(in_path)
-              import json
-              with open(out_path, 'w') as fp:
-                  json.dump(output, fp)
-          sleep(0.05)
+            os.remove(in_path)
+            with open(out_path, 'w') as fp:
+                json.dump(output, fp)
+        sleep(0.05)

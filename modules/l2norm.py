@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Function
 from torch.autograd import Variable
-
+import torch.nn.init as init
 
 class L2Norm(nn.Module):
     def __init__(self,n_channels, scale):
@@ -10,8 +10,8 @@ class L2Norm(nn.Module):
         self.n_channels = n_channels
         self.scale = scale or None
         self.eps = 1e-10
-        self.weight = nn.Parameter(torch.Tensor(self.n_channels))
-        self.weight.data.fill_(scale)
+        self.weight = nn.Parameter(torch.Tensor(self.n_channels,1))
+        init.constant(self.weight, scale)
         # self.bias = nn.Parameter(torch.Tensor(n_channels))
         #self.gradWeight = nn.Parameter(torch.Tensor(self.n_channels))
 
