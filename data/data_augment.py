@@ -23,7 +23,7 @@ from box_utils import jaccard
 
 def crop(img, boxes, labels, mode):
     """Crop
-    Args:
+    Arguments:
         img (Image): the image being input during training
         boxes (Tensor): the original bounding boxes in pt form
         labels (Tensor): the class labels for each bbox
@@ -53,24 +53,26 @@ def crop(img, boxes, labels, mode):
             # aspect ratio b/t .5 & 2
             if h / w < 0.5 or h / w > 2:
                 continue
+            left = random.randrange(width - w)
+            top = random.randrange(height - h)
+            rect = torch.LongTensor([[left, top, left+w, top+h]])
 
-            rect = torch.Tensor([[random.randrange(width - w),
-                                  random.randrange(height - h),
-                                  w, h]])
 
             overlap = jaccard(boxes, rect)
             if overlap.min() < min_iou and max_iou < overlap.max():
                 continue
-
-            img = img[rect[0, 1]:rect[0, 3], rect[0, 0]:rect[0, 2]]
+            t = transforms.ToTensor()
+            p = transforms.ToPILImage()
+            img = p(t(img)[:,rect[0, 1]:rect[0, 3], rect[0, 0]:rect[0, 2]])
 
             # keep overlap with gt box IF center in sampled patch
             centers = (boxes[:, :2] + boxes[:, 2:]) / 2
-            m1 = rect[0, :2].expand_as(centers) < centers
-            m2 = centers < rect[0, 2:].expand_as(centers)
-            mask = (m1 + m2).gt(1)  # equivalent to logical-and
+            m1 = (rect[0, :2].expand_as(centers).lt(centers)).sum(1).gt(1)
+            m2 = (centers.lt(rect[0, 2:].expand_as(centers))).sum(1).gt(1)
 
-            boxes = boxes[mask].copy()
+
+            mask = (m1 + m2).gt(1)  # equivalent to logical-and
+            boxes = boxes[mask.expand_as(boxes)].copy()
             classes = labels[mask]
             boxes[:, :2] = torch.max(
                 boxes[:, :2], rect[:, :2].expand_as(boxes))
@@ -91,7 +93,7 @@ def random_sample(img, boxes, labels):
     aspect ratio b/t .5 & 2
     keep overlap with gt box IF center in sampled patch
 
-    Args:
+    Arguments:
         img (Image): the image being input during training
 
     Return:
