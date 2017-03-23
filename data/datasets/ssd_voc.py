@@ -30,7 +30,7 @@ class SSDVOC(VOCDetection):
 
         if self.transform is not None:
             if self.image_set == 'train':
-                img = self.transform(img, target)
+                img, target = self.transform(img, target)
             else:
                 img = self.transform(img)
         img.squeeze_(0)

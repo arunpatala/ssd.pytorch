@@ -109,7 +109,7 @@ class AnnotationTransform(object):
             target (annotation) : the target annotation to be made usable
                 will be an ET.Element
         Returns:
-            a list containing lists of bounding boxes  [bbox coords, class name]
+            a list containing lists of bounding boxes  [bbox coords, class index]
         """
         res = []
         for obj in target.iter('object'):

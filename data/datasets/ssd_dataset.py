@@ -6,7 +6,7 @@ Ellis Brown
 """
 
 from . import SSDVOC, RGB_MEANS, AnnotationTransform
-from .. import VOCroot, base_transform, train_transform
+from .. import VOCroot, base_transform, TrainTransform
 
 
 def ssd_dataset(dataset, image_set, ssd_dim):
@@ -21,7 +21,7 @@ def ssd_dataset(dataset, image_set, ssd_dim):
     """
     if dataset.lower() == 'voc':
         trans = base_transform(ssd_dim, RGB_MEANS) if \
-            image_set.lower() == "train" else train_transform()
+            image_set.lower() == "train" else TrainTransform()
 
         return SSDVOC(VOCroot, image_set, trans, AnnotationTransform())
 
