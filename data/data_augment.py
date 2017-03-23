@@ -161,18 +161,32 @@ def photometric_distort(img, boxes, classes):
     -> add random lighting noise
     """
 
+    class Distort(object):
+        def __call__(self, img, alpha=1, delta=0):
+            """performs the distortion
+            Arguments:
+                img (Image): input image to be distorted
+                alpha (float): probability of enhanchement (0.5-1.5, 1 leaves unchanged)
+                delta (float): value of the distortion
+            """
+            tsr = transforms.ToTensor()
+            tmp = tsr(img).float() * alpha + delta
+            return tmp.clamp_(min=0, max=255)
+
     def convert(img, alpha=1, delta=0):
         """performs the distortion
+        # TODO consider making a callable transform
         Arguments:
             img (Image): input image to be distorted
             alpha (float): probability of enhanchement (0.5-1.5, 1 leaves unchanged)
             delta (float): value of the distortion
         """
-
-        tmp = img.float() * alpha + delta
+        tsr = transforms.ToTensor()
+        tmp = ts(img).float() * alpha + delta 
         img = tmp.clamp_(min=0, max=255)
 
     img = img.copy()
+
 
     # brightness
     # prob: 0
@@ -221,7 +235,7 @@ class TrainTransform(object):
     help make the model more robust to various input object sizes and shapes
     during training.
 
-    sample -> resize -> flip -> photometric (?)
+    sample-> photometric -> resize -> flip 
 
     TODO: complete all steps of augmentation
 
@@ -244,14 +258,16 @@ class TrainTransform(object):
         anno = torch.Tensor(anno)
         boxes, labels = torch.split(anno, 4, 1)
 
-        # SAMPLE - Random sample the image
+        # SAMPLE - Randomly sample a crop of image
         img, boxes, labels = random_sample(img, boxes, labels)
 
-        # apply photo-metric distortions
+        # DISTORT - apply photo-metric distortions
         img, boxes, labels = photometric_distort(img, boxes, labels)
 
         # RESIZE to fixed size
         # resize = transforms.RandomSizedCrop(224)
+
+        # FLIP
 
         transforms.Compose([
             # sample,
