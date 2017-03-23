@@ -9,13 +9,14 @@ from . import SSDVOC, RGB_MEANS, AnnotationTransform
 from .. import VOCroot, base_transform, TrainTransform
 
 
-def ssd_dataset(dataset, image_set, ssd_dim):
+def ssd_dataset(dataset, image_set, ssd_dim=300):
     """SSD Dataset factory
 
     Arguments:
         dataset (string): dataset to use (eg. 'VOC')
         image_set (string): imageset to use (eg. 'train', 'val', 'test')
         ssd_dim (int): dimension of ssd (300, or 512)
+            (default: 300)
     Return:
         the specified dataset object for use in the SSD network
     """

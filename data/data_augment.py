@@ -12,6 +12,7 @@ Ellis Brown
 """
 
 import random
+import numpy as np
 import torch
 from torchvision import transforms
 
@@ -21,7 +22,7 @@ from box_utils import jaccard
 
 def crop(img, boxes, labels, mode):
     """Crop
-    Arguments:
+    Args:
         img (Image): the image being input during training
         boxes (Tensor): the original bounding boxes in pt form
         labels (Tensor): the class labels for each bbox
@@ -89,7 +90,7 @@ def random_sample(img, boxes, labels):
     aspect ratio b/t .5 & 2
     keep overlap with gt box IF center in sampled patch
 
-    Arguments:
+    Args:
         img (Image): the image being input during training
 
     Return:
@@ -117,43 +118,7 @@ def random_sample(img, boxes, labels):
     return img, boxes, labels
 
 
-def rgb_to_hsv(r, g, b):
-    """HSV: Hue, Saturation, Value
-    source: https://github.com/python/cpython/blob/3.6/Lib/colorsys.py
-
-    Converts an RGB color representation to HSV representation
-
-    Arguments:
-        (r, g, b)
-        r (int): red channel (0-255)
-        g (int): green channel (0-255)
-        b (int): blue channel (0-255)
-    Return:
-        (h, s, v)
-        h (int): position in the spectrum (0-300)
-        s (int): color saturation ("purity") (0-100)
-        v (int): color brightness (0-100)
-    """
-    maxc = max(r, g, b)
-    minc = min(r, g, b)
-    v = maxc
-    if minc == maxc:
-        return 0.0, 0.0, v
-    s = (maxc - minc) / maxc
-    rc = (maxc - r) / (maxc - minc)
-    gc = (maxc - g) / (maxc - minc)
-    bc = (maxc - b) / (maxc - minc)
-    if r == maxc:
-        h = bc - gc
-    elif g == maxc:
-        h = 2.0 + rc - bc
-    else:
-        h = 4.0 + gc - rc
-    h = (h / 6.0) % 1.0
-    return h, s, v
-
-
-def photometric_distort(img, boxes, classes):
+def photometric_distort(image, boxes, classes):
     """photo-metric distortions
     https://arxiv.org/pdf/1312.5402.pdf
 
@@ -161,73 +126,151 @@ def photometric_distort(img, boxes, classes):
     -> add random lighting noise
     """
 
-    class Distort(object):
-        def __call__(self, img, alpha=1, delta=0):
-            """performs the distortion
-            Arguments:
-                img (Image): input image to be distorted
-                alpha (float): probability of enhanchement (0.5-1.5, 1 leaves unchanged)
-                delta (float): value of the distortion
-            """
-            tsr = transforms.ToTensor()
-            tmp = tsr(img).float() * alpha + delta
-            return tmp.clamp_(min=0, max=255)
-
-    def convert(img, alpha=1, delta=0):
+    def convert(pix, prob=1, delta=0):
         """performs the distortion
-        # TODO consider making a callable transform
-        Arguments:
-            img (Image): input image to be distorted
-            alpha (float): probability of enhanchement (0.5-1.5, 1 leaves unchanged)
+
+        Args:
+            pix (np): input image to be distorted
+            prob (float): probability of enhanchement (0.5-1.5, 1 leaves unchanged)
             delta (float): value of the distortion
         """
-        tsr = transforms.ToTensor()
-        tmp = ts(img).float() * alpha + delta 
-        img = tmp.clamp_(min=0, max=255)
+        tmp = pix.astype(float) * prob + delta
+        tmp[tmp < 0] = 0
+        tmp[tmp > 255] = 255
+        pix[:] = tmp
 
-    img = img.copy()
+    def rand_brightness(pix, delta=32):
+        """brightness
+        prob: 0
+        value: [0, 255]. Recommend 32.
 
+        Args:
+            pix (np): input image to be distorted
+            delta(int): delta of the distortion
+                (default: 32) [0, 255]
+        """
+        assert delta >= 0, "brightness delta must be non-negative."
+        if random.randrange(2):
+            convert(pix, delta=random.uniform(-delta, delta))
 
-    # brightness
-    # prob: 0
-    # value: [0, 255]. Recommend 32.
-    if random.randrange(2):
-        convert(img, delta=random.uniform(-32, 32))
+    def rand_contrast(pix, lower=0.5, upper=1.5):
+        """contrast
+        prob: 0
+        value: [.5, 1.5]
 
-    # contrast
-    # prob: 0
-    # value: [.5, 1.5]
-    if random.randrange(2):
-        convert(img, alpha=random.uniform(0.5, 1.5))
+        Args:
+            pix (np): input image to be distorted
+            lower (float): lower contrast bound
+                (default: 0.5)
+            upper (float): upper contrast bound
+                (default: 1.5)
+        """
+        assert upper >= lower, "contrast upper must be >= lower."
+        assert lower >= 0, "contrast lower must be non-negative."
+        if random.randrange(2):
+            convert(pix, prob=random.uniform(lower, upper))
 
-    # convert to HSV
-    # img = cv2.cvtColor(img.cpu().numpy(), cv2.COLOR_BGR2HSV)
-    img = img.convert('HSV')
+    def convert_to_HSV(img, pix):
+        """Converts from RGB to HSV
 
-    # saturation
-    # prob: 0
-    # [0.5, 1.5]
-    if random.randrange(2):
-        convert(img[:, :, 1], alpha=random.uniform(0.5, 1.5))
+        Hue, Saturation, Value
 
-    # hue
-    # prob: 0
-    # value: [0,180]. Recommend 36
-    if random.randrange(2):
-        tmp = img[:, :, 0].astype(int) + random.randint(-18, 18)
-        tmp %= 180
-        img[:, :, 0] = tmp
+        Args:
+            img (Image): image
+            pix (np): image
+        """
+        img.putdata(pix)
+        img = img.convert('HSV')
+        pix = np.array(img)
 
-    # convert to RGB
-    # img = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
+    def rand_saturation(pix, lower=0.5, upper=1.5):
+        """saturation
+        prob: 0
+        [0.5, 1.5]
 
-    # random order img channels
-    # prob: 0.0
-    if random.randrange(2):
-        # shuffle channels
-        print()
+        Args:
+            pix (np): input image to be distorted
+            lower (float): lower saturation bound
+                (default: 0.5)
+            upper (float): upper saturation bound
+                (default: 1.5)
+        """
+        assert upper >= lower, "saturation upper must be >= lower."
+        assert lower >= 0, "saturation lower must be non-negative."
+        if random.randrange(2):
+            convert(pix[:, :, 1], prob=random.uniform(lower, upper))
 
-    return img, boxes, classes
+    def rand_hue(pix, delta=36):
+        """hue
+        prob: 0
+        value: [0,180]. Recommend 36
+
+        Args:
+            pix (np): input image to be distorted
+            delta(int): delta of distortion
+                (default: 36) [0,180]
+        """
+        assert delta >= 0, "hue delta must be non-negative."
+        if random.randrange(2):
+            tmp = pix[:, :, 0].astype(int) + \
+                random.randint(-delta / 2, delta / 2)
+            tmp %= 180
+            pix[:, :, 0] = tmp
+
+    def convert_to_RGB(img, pix):
+        """Converts from HSV to RGB
+
+        Args:
+            img (Image): image
+            pix (np): image
+        """
+        img.putdata(pix)
+        img = img.convert('RGB')
+
+    def rand_lighting_noise(img):
+        """random order img channels to add random lighting noise
+        prob: 0.0
+
+        Args:
+            img (Image): input image to be distorted
+        """
+        channel_perms = ((0, 1, 2), (0, 2, 1),
+                         (1, 0, 2), (1, 2, 0),
+                         (2, 0, 1), (2, 1, 0))
+        if random.randrange(2):
+            swap = random.choice(channel_perms)
+            # shuffle channels
+            shuffle = SwapChannel(swap)
+            img = shuffle(img)
+
+    def apply_distorts(img):
+        """Randomly applies all of the distortions defined above
+
+        Args:
+            img (Image): input image to be distorted
+        """
+
+        img = img.copy()  # PIL
+        pix = np.array(img)  # NP
+
+        rand_brightness(pix)
+        if random.randrange(2):
+            rand_contrast(pix)
+            convert_to_HSV(img, pix)
+            rand_saturation(pix)
+            rand_hue(pix)
+            convert_to_RGB(img, pix)
+        else:
+            convert_to_HSV(img, pix)
+            rand_saturation(pix)
+            rand_hue(pix)
+            convert_to_RGB(img, pix)
+            rand_contrast(pix)
+            img.putdata(pix)
+        rand_lighting_noise(img)
+
+    apply_distorts(image)
+    return image, boxes, classes
 
 
 class TrainTransform(object):
@@ -246,11 +289,11 @@ class TrainTransform(object):
 
     def __call__(self, img, anno):
         """
-        Arguments:
+        Args:
             img (Image): the image being input during training
             anno (list): a list containing lists of bounding boxes
                 (output of the target_transform) [bbox coords, class name]
-        Returns:
+        Return:
             tuple of Tensors (image, anno)
         """
 
@@ -283,7 +326,7 @@ class SwapChannel(object):
 
     modifies the input tensor
 
-    Arguments:
+    Args:
         swaps (int triple): final order of channels
             eg: (2, 1, 0)
     """
@@ -293,9 +336,9 @@ class SwapChannel(object):
 
     def __call__(self, image):
         """
-        Arguments:
+        Args:
             image (Tensor): image tensor to be transformed
-        Returns:
+        Return:
             a tensor with channels swapped according to swap
         """
         temp = image.clone()
@@ -310,12 +353,12 @@ def base_transform(dim, mean_values):
 
     dimension -> tensorize -> color adj
 
-    Arguments:
+    Args:
         dim (int): input dimension to SSD
         mean_values ( (int,int,int) ): average RGB of the dataset
             (104,117,123)
 
-    Returns:
+    Return:
         transform (transform) : callable transform to be applied to test/val
         data
     """
