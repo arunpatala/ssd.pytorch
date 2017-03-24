@@ -22,7 +22,7 @@ def ssd_dataset(dataset, image_set, ssd_dim=300):
     """
     if dataset.lower() == 'voc':
         trans = base_transform(ssd_dim, RGB_MEANS) if \
-            image_set.lower() == "train" else TrainTransform()
+            image_set.lower() == "train" else TrainTransform(RGB_MEANS)
 
         return SSDVOC(VOCroot, image_set, trans, AnnotationTransform())
 
