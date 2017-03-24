@@ -4,11 +4,7 @@ Dataset classes.
 The data augmentation procedures were interpreted from @weiliu89's SSD paper
 http://arxiv.org/abs/1512.02325
 
-TODO: explore https://github.com/ncullen93/torchsample/blob/master/torchsample/transforms
-    for any useful tranformations
-TODO: implement data_augment for training
-
-Ellis Brown
+Ellis Brown, Max DeGroot
 """
 
 import random
@@ -55,21 +51,19 @@ def crop(img, boxes, labels, mode):
                 continue
             left = random.randrange(width - w)
             top = random.randrange(height - h)
-            rect = torch.LongTensor([[left, top, left+w, top+h]])
-
+            rect = torch.LongTensor([[left, top, left + w, top + h]])
 
             overlap = jaccard(boxes, rect)
             if overlap.min() < min_iou and max_iou < overlap.max():
                 continue
             t = transforms.ToTensor()
             p = transforms.ToPILImage()
-            img = p(t(img)[:,rect[0, 1]:rect[0, 3], rect[0, 0]:rect[0, 2]])
+            img = p(t(img)[:, rect[0, 1]:rect[0, 3], rect[0, 0]:rect[0, 2]])
 
             # keep overlap with gt box IF center in sampled patch
             centers = (boxes[:, :2] + boxes[:, 2:]) / 2
             m1 = (rect[0, :2].expand_as(centers).lt(centers)).sum(1).gt(1)
             m2 = (centers.lt(rect[0, 2:].expand_as(centers))).sum(1).gt(1)
-
 
             mask = (m1 + m2).gt(1)  # equivalent to logical-and
             boxes = boxes[mask.expand_as(boxes)].copy()
@@ -277,6 +271,41 @@ def photometric_distort(image, boxes, classes):
 
     return apply_distorts(image), boxes, classes
 
+def expand(image, boxes, classes, mean):
+    """
+    """
+    if random.randrange(2):
+        return image, boxes, classes
+
+    height, width, depth = image.shape
+    ratio = random.uniform(1, 4)
+    left = random.randint(0, int(width * ratio) - width)
+    top = random.randint(0, int(height * ratio) - height)
+
+    expand_image = np.empty(
+        (int(height * ratio), int(width * ratio), depth),
+        dtype=image.dtype)
+    expand_image[:, :] = mean
+    expand_image[top:top + height, left:left + width] = image
+    image = expand_image
+
+    boxes = boxes.copy()
+    boxes[:, :2] += (left, top)
+    boxes[:, 2:] += (left, top)
+
+    return image, boxes, classes
+
+
+def mirror(image, boxes, classes):
+    """
+    """
+    _, width, _ = image.shape
+    if random.randrange(2):
+        image = image[:, ::-1]
+        boxes = boxes.copy()
+        boxes[:, 0::2] = width - boxes[:, 2::-2]
+    return image, boxes, classes
+
 
 class TrainTransform(object):
     """Takes an input image and its annotation and transforms the image to
@@ -313,6 +342,8 @@ class TrainTransform(object):
         img, boxes, labels = photometric_distort(img, boxes, labels)
 
         # RESIZE to fixed size
+        img, boxes, labels = expand(img, boxes, labels)
+        
         # resize = transforms.RandomSizedCrop(224)
 
         # FLIP
