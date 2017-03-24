@@ -336,7 +336,7 @@ class TrainTransform(object):
         """
 
         # anno [[xmin, ymin, xmax, ymax, label_ind], ... ]
-        anno = torch.Tensor(anno)
+        anno = torch.LongTensor(anno)
         boxes, labels = torch.split(anno, 4, 1)
 
         # SAMPLE - Randomly sample a crop of image
