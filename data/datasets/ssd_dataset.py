@@ -21,8 +21,8 @@ def ssd_dataset(dataset, image_set, ssd_dim=300):
         the specified dataset object for use in the SSD network
     """
     if dataset.lower() == 'voc':
-        trans = base_transform(ssd_dim, RGB_MEANS) if \
-            image_set.lower() == "train" else TrainTransform(RGB_MEANS)
+        trans = TrainTransform(RGB_MEANS) if image_set.lower() == "train" \
+            else base_transform(ssd_dim, RGB_MEANS)
 
         return SSDVOC(VOCroot, image_set, trans, AnnotationTransform())
 
