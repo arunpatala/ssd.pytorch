@@ -14,7 +14,6 @@ import torch
 from torchvision import transforms
 
 from box_utils import jaccard
-# import torch_transforms
 
 
 def crop(img, boxes, labels, mode):
@@ -321,12 +320,17 @@ class TrainTransform(object):
         image
     """
 
+    def __init__(self, means):
+        self.means = means
+
+
     def __call__(self, img, anno):
         """
         Args:
             img (Image): the image being input during training
             anno (list): a list containing lists of bounding boxes
                 (output of the target_transform) [bbox coords, class name]
+            means (int tuple): mean RGB values for the dataset
         Return:
             tuple of Tensors (image, anno)
         """
@@ -342,19 +346,12 @@ class TrainTransform(object):
         img, boxes, labels = photometric_distort(img, boxes, labels)
 
         # RESIZE to fixed size
-        img, boxes, labels = expand(img, boxes, labels)
-        
-        # resize = transforms.RandomSizedCrop(224)
+        img, boxes, labels = expand(img, boxes, labels, self.means)
 
         # FLIP
+        img, boxes, labels = mirror(img, boxes, labels)
 
-        transforms.Compose([
-            # sample,
-            # resize,
-            transforms.RandomHorizontalFlip()
-            # photmetric
-        ])
-        return img
+        return img, boxes, labels
 
 
 class SwapChannel(object):
