@@ -15,6 +15,9 @@ from torchvision import transforms
 
 from box_utils import jaccard
 
+to_pil = transforms.ToPILImage()
+to_tensor = transforms.ToTensor()
+
 
 def crop(img, boxes, labels, mode):
     """Crop
@@ -51,30 +54,31 @@ def crop(img, boxes, labels, mode):
             left = random.randrange(width - w)
             top = random.randrange(height - h)
             rect = torch.LongTensor([[left, top, left + w, top + h]])
-
             overlap = jaccard(boxes, rect)
             if overlap.min() < min_iou and max_iou < overlap.max():
                 continue
             t = transforms.ToTensor()
             p = transforms.ToPILImage()
-            img = p(t(img)[:, rect[0, 1]:rect[0, 3], rect[0, 0]:rect[0, 2]])
+            image = p(t(img)[:, rect[0, 1]:rect[0, 3], rect[0, 0]:rect[0, 2]])
 
             # keep overlap with gt box IF center in sampled patch
             centers = (boxes[:, :2] + boxes[:, 2:]) / 2
             m1 = (rect[0, :2].expand_as(centers).lt(centers)).sum(1).gt(1)
             m2 = (centers.lt(rect[0, 2:].expand_as(centers))).sum(1).gt(1)
+            mask = (m1 + m2).gt(1).squeeze().nonzero().squeeze()
 
-            mask = (m1 + m2).gt(1)  # equivalent to logical-and
-            boxes = boxes[mask.expand_as(boxes)].copy()
+            # TODO: check for case when mask contains nothing
+            if mask.dim()==0:
+                continue
+            boxes = boxes[mask].clone()
             classes = labels[mask]
-            boxes[:, :2] = torch.max(
-                boxes[:, :2], rect[:, :2].expand_as(boxes))
-            boxes[:, :2] -= rect[:, :2].expand_as(boxes)
-            boxes[:, 2:] = torch.min(
-                boxes[:, 2:], rect[:, 2:].expand_as(boxes))
-            boxes[:, 2:] -= rect[:, 2:].expand_as(boxes)
+            rect = rect.expand_as(boxes)
+            boxes[:, :2] = torch.max(boxes[:, :2], rect[:, :2])
+            boxes[:, :2] -= rect[:, :2]
+            boxes[:, 2:] = torch.min(boxes[:, 2:], rect[:, 2:])
+            boxes[:, 2:] -= rect[:, 2:]
 
-            return img, boxes, classes
+            return image, boxes, classes
 
 
 def random_sample(img, boxes, labels):
@@ -108,9 +112,7 @@ def random_sample(img, boxes, labels):
     )
 
     mode = random.choice(sample_options)
-
     img, boxes, labels = crop(img, boxes, labels, mode)
-
     return img, boxes, labels
 
 
@@ -130,10 +132,12 @@ def photometric_distort(image, boxes, classes):
             prob (float): probability of enhanchement (0.5-1.5, 1 leaves unchanged)
             delta (float): value of the distortion
         """
-        tmp = pix.astype(float) * prob + delta
-        tmp[tmp < 0] = 0
-        tmp[tmp > 255] = 255
-        pix[:] = tmp
+        convert = transforms.Compose([
+            transforms.Lambda(lambda x: x.mul(prob)),
+            transforms.Lambda(lambda x: x.add(delta)),
+            transforms.Lambda(lambda x: x.clamp(0,255))
+        ])
+        pix = convert(pix)
 
     def rand_brightness(pix, delta=32):
         """brightness
@@ -175,9 +179,10 @@ def photometric_distort(image, boxes, classes):
             img (Image): image
             pix (np): image
         """
-        img = Image.fromarray(pix)
+        img = to_pil(pix)
         img = img.convert('HSV')
-        pix = np.array(img)
+        # pix = np.array(img)
+        return to_tensor(img)
 
     def rand_saturation(pix, lower=0.5, upper=1.5):
         """saturation
@@ -193,8 +198,17 @@ def photometric_distort(image, boxes, classes):
         """
         assert upper >= lower, "saturation upper must be >= lower."
         assert lower >= 0, "saturation lower must be non-negative."
+        prob=random.uniform(lower, upper)
+        tmp = pix.clone()
+        delta = 0
+        prob=random.uniform(0.5, 1.5)
+        convert = transforms.Compose([
+            transforms.Lambda(lambda x: x[1,:,:].mul(prob)),
+            transforms.Lambda(lambda x: x.add(delta)),
+            transforms.Lambda(lambda x: x.clamp(0,255))
+        ])
         if random.randrange(2):
-            convert(pix[:, :, 1], prob=random.uniform(lower, upper))
+            pix[1,:,:] = convert(tmp)
 
     def rand_hue(pix, delta=36):
         """hue
@@ -207,11 +221,13 @@ def photometric_distort(image, boxes, classes):
                 (default: 36) [0,180]
         """
         assert delta >= 0, "hue delta must be non-negative."
+        tmp = pix.clone()
         if random.randrange(2):
-            tmp = pix[:, :, 0].astype(int) + \
-                random.randint(-delta / 2, delta / 2)
-            tmp %= 180
-            pix[:, :, 0] = tmp
+            rand_hue_transform = transforms.Compose([
+                transforms.Lambda(lambda x: x[0,:,:].add(random.randint(-delta/2, delta/2))),
+                transforms.Lambda(lambda x: x % 180)
+            ])
+            pix[0,:,:] = rand_hue_transform(tmp)
 
     def convert_to_RGB(img, pix):
         """Converts from HSV to RGB
@@ -220,9 +236,9 @@ def photometric_distort(image, boxes, classes):
             img (Image): image
             pix (np): image
         """
-        img = Image.fromarray(pix)
+
         img = img.convert('RGB')
-        pix = np.array(img)
+        return to_tensor(img)
 
     def rand_lighting_noise(pix):
         """random order img channels to add random lighting noise
@@ -236,39 +252,28 @@ def photometric_distort(image, boxes, classes):
                          (2, 0, 1), (2, 1, 0))
         if random.randrange(2):
             swap = random.choice(channel_perms)
-            # shuffle channels
-            shuffle = SwapChannel(swap)
-            tns = torch.from_numpy(pix)
-            tns = shuffle(tns)
-            pix = tns.numpy()
+            shuffle = SwapChannel(swap)  # shuffle channels
+            pix = shuffle(pix)
 
-    def apply_distorts(img):
-        """Randomly applies all of the distortions defined above
 
-        Args:
-            img (Image): input image to be distorted
-        """
+    im = image.copy()  # PIL
+    px = to_tensor(im) # Tensor
+    rand_brightness(px)
+    if random.randrange(2):
+        rand_contrast(px)
+        px = convert_to_HSV(im, px)
+        rand_saturation(px)
+        rand_hue(px)
+        px = convert_to_RGB(im, px)
+    else:
+        px = convert_to_HSV(im, px)
+        rand_saturation(px)
+        rand_hue(px)
+        px = convert_to_RGB(im, px)
+        rand_contrast(px)
+    rand_lighting_noise(px)
 
-        img = img.copy()     # PIL
-        pix = np.array(img)  # NP
-
-        rand_brightness(pix)
-        if random.randrange(2):
-            rand_contrast(pix)
-            convert_to_HSV(img, pix)
-            rand_saturation(pix)
-            rand_hue(pix)
-            convert_to_RGB(img, pix)
-        else:
-            convert_to_HSV(img, pix)
-            rand_saturation(pix)
-            rand_hue(pix)
-            convert_to_RGB(img, pix)
-            rand_contrast(pix)
-        rand_lighting_noise(pix)
-        return Image.fromarray(pix)
-
-    return apply_distorts(image), boxes, classes
+    return px, boxes, classes
 
 def expand(image, boxes, classes, mean):
     """
@@ -276,21 +281,24 @@ def expand(image, boxes, classes, mean):
     if random.randrange(2):
         return image, boxes, classes
 
-    height, width, depth = image.shape
+    depth,height,width = image.size()
     ratio = random.uniform(1, 4)
     left = random.randint(0, int(width * ratio) - width)
     top = random.randint(0, int(height * ratio) - height)
 
-    expand_image = np.empty(
-        (int(height * ratio), int(width * ratio), depth),
-        dtype=image.dtype)
-    expand_image[:, :] = mean
-    expand_image[top:top + height, left:left + width] = image
-    image = expand_image
+    expand_image=torch.zeros(depth, int(height * ratio), int(width * ratio))
+    idx = torch.LongTensor(([0],[1],[2]))
+    expand_image.index_fill_(0,idx[0],mean[0])
+    expand_image.index_fill_(0,idx[1],mean[1])
+    expand_image.index_fill_(0,idx[2],mean[2])
 
-    boxes = boxes.copy()
-    boxes[:, :2] += (left, top)
-    boxes[:, 2:] += (left, top)
+    expand_image[:,top:top + height, left:left + width] = image
+    image = expand_image
+    boxes = boxes.clone()
+    boxes[:, 0] += left
+    boxes[:, 1] += top
+    boxes[:, 2] += left
+    boxes[:, 3] += top
 
     return image, boxes, classes
 
@@ -298,11 +306,18 @@ def expand(image, boxes, classes, mean):
 def mirror(image, boxes, classes):
     """
     """
-    _, width, _ = image.shape
+    _,height,width = image.size()
     if random.randrange(2):
-        image = image[:, ::-1]
-        boxes = boxes.copy()
-        boxes[:, 0::2] = width - boxes[:, 2::-2]
+        mirror = transforms.Compose([
+            transforms.ToPILImage(),
+            HorizontalFlip(),
+            transforms.ToTensor()
+        ])
+        image = mirror(image)
+        boxes = boxes.clone()
+        # horizontally flip bounding boxes
+        boxes[:,0] = width - boxes[:,2]
+        boxes[:,2] = width - boxes[:,0]
     return image, boxes, classes
 
 
@@ -338,20 +353,27 @@ class TrainTransform(object):
         # anno [[xmin, ymin, xmax, ymax, label_ind], ... ]
         anno = torch.LongTensor(anno)
         boxes, labels = torch.split(anno, 4, 1)
-
+        if(boxes.dim()==1):
+            boxes.unsqueeze_(0)
         # SAMPLE - Randomly sample a crop of image
         img, boxes, labels = random_sample(img, boxes, labels)
-
         # DISTORT - apply photo-metric distortions
         img, boxes, labels = photometric_distort(img, boxes, labels)
-
         # RESIZE to fixed size
         img, boxes, labels = expand(img, boxes, labels, self.means)
-
         # FLIP
         img, boxes, labels = mirror(img, boxes, labels)
+        _,h,w = img.size()
 
-        return img, boxes, labels
+        final_transform = base_transform(300,self.means)
+        img = final_transform(to_pil(img))
+        boxes = boxes.float()
+        labels = labels.float()
+        boxes[:, 0::2] /= w
+        boxes[:, 1::2] /= h
+        anno = torch.cat((boxes,labels),1).tolist()
+
+        return img, anno
 
 
 class SwapChannel(object):
@@ -403,6 +425,14 @@ def base_transform(dim, mean_values):
         transforms.CenterCrop(dim),
         transforms.ToTensor(),
         transforms.Lambda(lambda x: x.mul(255)),
+        transforms.Normalize(mean_values, (1, 1, 1)),
         SwapChannel(swap),
-        transforms.Normalize(mean_values, (1, 1, 1))
     ])
+
+class HorizontalFlip(object):
+    # based on: https://github.com/pytorch/vision/blob/master/torchvision/transforms.py#L214
+    """Horizontally flips the given PIL.Image.
+    """
+
+    def __call__(self, img):
+        return img.transpose(Image.FLIP_LEFT_RIGHT)

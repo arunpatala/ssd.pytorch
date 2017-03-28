@@ -124,7 +124,7 @@ class AnnotationTransform(object):
             for i, cur_bb in enumerate(bbox):
                 bb_sz = int(cur_bb.text) - 1
                 # scale height or width
-                bb_sz = bb_sz / width if i % 2 == 0 else bb_sz / height
+                # bb_sz = bb_sz / width if i % 2 == 0 else bb_sz / height
                 bndbox.append(bb_sz)
 
             label_ind = self.class_to_ind[name]
@@ -302,5 +302,4 @@ def detection_collate(batch):
             elif isinstance(tup, type([])):
                 annos = [torch.Tensor(a) for a in tup]
                 targets.append(torch.stack(annos, 0))
-
     return (torch.stack(imgs, 0), targets)

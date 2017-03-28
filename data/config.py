@@ -13,7 +13,7 @@ BATCHES = 32
 # data reshuffled at every epoch
 SHUFFLE = True
 # number of subprocesses to use for data loading
-WORKERS = 4
+WORKERS = 0
 
 
 #SSD300 CONFIGS
