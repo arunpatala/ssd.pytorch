@@ -58,7 +58,9 @@ class MultiBoxLoss(nn.Module):
             ground_truth (tensor): Ground truth boxes and labels for a batch,
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
-
+        #print("predictions", predictions)
+        #print("targets", targets.size())
+        #print(targets.size())
         loc_data, conf_data, priors = predictions
         num = loc_data.size(0)
         num_priors = (priors.size(0))
@@ -68,6 +70,9 @@ class MultiBoxLoss(nn.Module):
         loc_t = torch.Tensor(num, num_priors, 4)
         conf_t = torch.LongTensor(num, num_priors)
         for idx in range(num):
+            #mask = torch.nonzero(targets.data[idx][:,-1]!=-1)
+            #print(mask)
+            #t = targets.index_select(0,mask)
             truths = targets[idx][:,:-1].data
             labels = targets[idx][:,-1].data
             defaults = priors.data
@@ -114,4 +119,4 @@ class MultiBoxLoss(nn.Module):
         N = num_pos.data.sum()
         loss_l/=N
         loss_c/=N
-        return loss_l,loss_c
+        return loss_l+loss_c

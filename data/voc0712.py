@@ -134,6 +134,39 @@ class AnnotationTransform(object):
         return res  # [[xmin, ymin, xmax, ymax, label_ind], ... ]
 
 
+class AnnTensorTransform(object):
+    """Transforms a VOC annotation into a Tensor of bbox coords and label index
+    Initilized with a dictionary lookup of classnames to indexes
+
+    Arguments:
+        class_to_ind (dict, optional): dictionary lookup of classnames -> indexes
+            (default: alphabetic indexing of VOC's 20 classes)
+        keep_difficult (bool, optional): keep difficult instances or not
+            (default: False)
+        height (int): height
+        width (int): width
+    """
+
+    def __init__(self, t=AnnotationTransform(), max_anno=None):
+        self.t = t
+        self.max_anno = max_anno
+
+    def __call__(self, target, width, height):
+        """
+        Arguments:
+            target (annotation) : the target annotation to be made usable
+                will be an ET.Element
+        Returns:
+            a list containing lists of bounding boxes  [bbox coords, class name]
+        """
+        
+        res = self.t(target, width, height)
+        if self.max_anno is None: return torch.Tensor(res)
+        ret = torch.ones((self.max_anno),5).float() * -1
+        ret[:len(res)] = torch.Tensor(res)
+        return  ret # [[xmin, ymin, xmax, ymax, label_ind], ... ]
+
+
 class VOCDetection(data.Dataset):
     """VOC Detection Dataset Object
 
@@ -152,7 +185,8 @@ class VOCDetection(data.Dataset):
     """
 
     def __init__(self, root, image_sets, transform=None, target_transform=None,
-                 dataset_name='VOC0712'):
+                 dataset_name='VOC0712', max_anno = 200):
+        self.max_anno = max_anno
         self.root = root
         self.image_set = image_sets
         self.transform = transform
@@ -216,6 +250,7 @@ class VOCDetection(data.Dataset):
         img_id = self.ids[index]
         anno = ET.parse(self._annopath % img_id).getroot()
         gt = self.target_transform(anno, 1, 1)
+        torch.zeros((self.max_anno, ))
         return img_id[1], gt
 
     def pull_tensor(self, index):
