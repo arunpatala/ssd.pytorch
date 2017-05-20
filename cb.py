@@ -47,8 +47,8 @@ def save(img, tgts, pos, neg, batch):
     new_img = img[0].data.clone().numpy().transpose((1,2,0))
     new_img += rgb_means
     img = Image.fromarray(new_img.astype('uint8'))
-    pann = Ann(dets=(pos*300).int().numpy())
-    nann = Ann(dets=(neg*300).int().numpy())
+    pann = Ann(dets=(pos*300).round().int().numpy())
+    nann = Ann(dets=(neg*300).round().int().numpy())
     tann = Ann(dets=(tgts.data[0][:,:-1]*300).int().numpy())
     rect = True
     pimgs = pann.plot_size(img, color=(0,255,0))
