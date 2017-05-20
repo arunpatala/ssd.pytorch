@@ -16,6 +16,7 @@ import os
 from torchvision import datasets
 
 from data import VOCroot, v2, v1, AnnotationTransform, VOCDetection, detection_collate, BaseTransform, AnnTensorTransform
+from data import SLDetection
 from layers.modules import MultiBoxLoss
 from ssd import build_ssd
 from cb import PosNeg
@@ -37,14 +38,11 @@ parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for S
 parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss at each iteration')
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
-parser.add_argument('--num_classes', default=21, help='num of classes')
-parser.add_argument('--dim', default=300, help='dimension of input to model')
+parser.add_argument('--num_classes', default=2, help='num of classes')
+parser.add_argument('--dim', default=1000, help='dimension of input to model')
 args = parser.parse_args()
 
 cfg = (v1, v2)[args.version == 'v2']
-
-ssd_dim = 300  # only support 300 now
-rgb_means = (104, 117, 123)  # only support voc now
 
 #model = Network()
 
@@ -72,6 +70,7 @@ criterion = MultiBoxLoss(args.num_classes, 0.5, True, 0, True, 3, 0.5, False)
 
 trainer = ModuleTrainer(model)
 
+chk = ModelCheckpoint(directory=".")
 
 trainer.compile(loss=criterion,
                 optimizer='adadelta',
@@ -79,21 +78,23 @@ trainer.compile(loss=criterion,
                 #constraints=constraints,
                 #initializers=initializers,
                 #metrics=metrics, 
-                callbacks=[PosNeg(model, criterion)])
+                callbacks=[chk, PosNeg(model, criterion)])
 
 
+from polarbear import *
 
-cfg = (v1, v2)[args.version == 'v2']
-train_sets = [('2007', 'trainval'), ('2012', 'trainval')]
-
-train_dataset = VOCDetection(VOCroot, train_sets,  BaseTransform(
-        ssd_dim, rgb_means), AnnTensorTransform())
+ds = DataSource()
+all = ds.dataset("all")
+aimg,_ = all.aimg(900)
+train_dataset = SLDetection(aimg)
+#train_dataset = VOCDetection(VOCroot, train_sets,  BaseTransform(
+#        ssd_dim, rgb_means), AnnTensorTransform())
 #train_dataset = TensorDataset(x_train, y_train)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 
-val_dataset = VOCDetection(VOCroot, [('2007', 'test')], BaseTransform(
-        ssd_dim, rgb_means), AnnTensorTransform())
-val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
+#val_dataset = VOCDetection(VOCroot, [('2007', 'test')], BaseTransform(
+#        ssd_dim, rgb_means), AnnTensorTransform())
+#val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 
 trainer.fit_loader(train_loader, nb_epoch=20, verbose=1)

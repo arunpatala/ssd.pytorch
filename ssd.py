@@ -92,7 +92,7 @@ class SSD(nn.Module):
 
         # apply multibox head to source layers
         for (x, l, c) in zip(sources, self.loc, self.conf):
-            #print(x.size())
+            #print(x.size(), l(x).size())
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
 
@@ -186,25 +186,26 @@ base = {
     '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
     '512': [],
+    '1000': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
 }
 extras = {
     #'300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '300': [256],
     '512': [],
+    '1000': [256],
 }
 mbox = {
     #'300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
     '300': [1, 1],  # number of boxes per feature map location
     '512': [],
+    '1000': [1, 1], 
 }
 
 
 def build_ssd(phase, size=300, num_classes=21):
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
-        return
-    if size != 300:
-        print("Error: Sorry only SSD300 is supported currently!")
         return
 
     return SSD(phase, *multibox(vgg(base[str(size)], 3),

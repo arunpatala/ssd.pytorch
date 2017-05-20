@@ -35,7 +35,7 @@ class MultiBoxLoss(nn.Module):
 
 
     def __init__(self, num_classes, overlap_thresh, prior_for_matching, 
-                    bkg_label, neg_mining, neg_pos, neg_overlap, encode_target, alpha=1):
+                    bkg_label, neg_mining, neg_pos, neg_overlap, encode_target, neg_thresh=None, alpha=1):
         super(MultiBoxLoss, self).__init__()
         self.num_classes = num_classes
         self.threshold = overlap_thresh
@@ -47,6 +47,8 @@ class MultiBoxLoss(nn.Module):
         self.neg_overlap = neg_overlap
         self.variance = cfg['variance']
         self.alpha = alpha
+        if neg_thresh is not None: self.neg_thresh = neg_thresh
+        else: self.neg_thresh = overlap_thresh
 
     def forward(self, predictions, targets):
         """Multibox Loss

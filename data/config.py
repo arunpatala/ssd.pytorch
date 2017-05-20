@@ -19,9 +19,9 @@ WORKERS = 4
 #SSD300 CONFIGS
 # newer version: use additional conv11_2 layer as last layer before multibox layers
 v = {
-    'feature_maps' : [38, 19],
+    'feature_maps' : [125, 62],
 
-    'min_dim' : 300,
+    'min_dim' : 1000,
 
     'steps' : [8, 16],
 
