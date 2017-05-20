@@ -18,6 +18,7 @@ from torchvision import datasets
 from data import VOCroot, v2, v1, AnnotationTransform, VOCDetection, detection_collate, BaseTransform, AnnTensorTransform
 from layers.modules import MultiBoxLoss
 from ssd import build_ssd
+from cb import PosNeg
 
 import argparse
 
@@ -25,7 +26,7 @@ parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Trai
 parser.add_argument('--version', default='v2', help='conv11_2(v2) or pool6(v1) as last layer')
 parser.add_argument('--basenet', default='vgg16_reducedfc.pth', help='pretrained base model')
 parser.add_argument('--jaccard_threshold', default=0.5, type=float, help='Min Jaccard index for matching')
-parser.add_argument('--batch_size', default=16, type=int, help='Batch size for training')
+parser.add_argument('--batch_size', default=1, type=int, help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--iterations', default=120000, type=int, help='Number of training epochs')
 parser.add_argument('--cuda', default=True, type=bool, help='Use cuda to train model')
@@ -73,19 +74,20 @@ trainer = ModuleTrainer(model)
 
 
 trainer.compile(loss=criterion,
-                optimizer='adadelta')
+                optimizer='adadelta',
                 #regularizers=regularizers,
                 #constraints=constraints,
                 #initializers=initializers,
                 #metrics=metrics, 
-                #callbacks=callbacks)
+                callbacks=[PosNeg(model, criterion)])
 
 
 
 cfg = (v1, v2)[args.version == 'v2']
 train_sets = [('2007', 'trainval'), ('2012', 'trainval')]
 
-train_dataset = VOCDetection(VOCroot, train_sets,  AnnTensorTransform())
+train_dataset = VOCDetection(VOCroot, train_sets,  BaseTransform(
+        ssd_dim, rgb_means), AnnTensorTransform())
 #train_dataset = TensorDataset(x_train, y_train)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 
