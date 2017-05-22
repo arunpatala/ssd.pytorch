@@ -2,6 +2,7 @@ from torchsample.callbacks import Callback
 import torch
 from polarbear import *
 from PIL import Image
+import torch.nn as nn
 
 class PosNeg(Callback):
     """
@@ -11,6 +12,7 @@ class PosNeg(Callback):
     def __init__(self, net, ct):
         self.net = net
         self.ct = ct
+        self.softmax = nn.Softmax()
 
     def set_params(self, params):
         self.params = params
@@ -31,8 +33,17 @@ class PosNeg(Callback):
         pos = self.ct.pos_boxes
         neg = self.ct.neg_boxes
         img = self.net.imgs
+        conf = self.softmax((self.ct.conf_data.view(-1, 2)))
+        #print("conf", conf.size())
+        heatmap1 = conf.data[:125*125,0].int()*255
+        heatmap1 = heatmap1.contiguous().view((125,125)).cpu().numpy()
+        Image.fromarray(heatmap1.astype('uint8')).save("tmp/"+str(batch)+"_himg.jpg")
+        heatmap2 = conf.data[125*125:,0].int()*255
+        heatmap2 = heatmap2.contiguous().view((62,62)).cpu().numpy()
+        Image.fromarray(heatmap2.astype('uint8')).save("tmp/"+str(batch)+"_hhimg.jpg")
+
         targets = self.ct.targets
-        torch.save([img, targets, pos, neg], "tmp.th")
+        #torch.save([img, targets, pos, neg], "tmp.th")
         save(img, targets, pos, neg, batch)
 
     def on_train_begin(self, logs=None):
@@ -45,12 +56,15 @@ def save(img, tgts, pos, neg, batch):
     assert(img.size(0)==1)
     _,C,H,W, = img.size()
     rgb_means = (104, 117, 123)
-    new_img = img[0].data.clone().numpy().transpose((1,2,0))
+    new_img = img[0].data.cpu().clone().numpy().transpose((1,2,0))
     new_img += rgb_means
     img = Image.fromarray(new_img.astype('uint8'))
-    pann = Ann(dets=(pos*H).round().int().numpy())
-    nann = Ann(dets=(neg*H).round().int().numpy())
-    tann = Ann(dets=(tgts.data[0][:,:-1]*H).int().numpy())
+
+
+
+    pann = Ann(dets=(pos*H).round().int().cpu().numpy())
+    nann = Ann(dets=(neg*H).round().int().cpu().numpy())
+    tann = Ann(dets=(tgts.data[0][:,:-1]*H).int().cpu().numpy())
     rect = True
     pimgs = pann.plot_size(img, color=(0,255,0))
     for i in range(len(pimgs)):

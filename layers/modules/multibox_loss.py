@@ -71,6 +71,8 @@ class MultiBoxLoss(nn.Module):
         num_classes = self.num_classes
         priors_point = point_form(priors)
 
+        #torch.save(conf_data, "conf_data.th")
+        self.conf_data = conf_data
         # match priors (default boxes) and ground truth boxes
         loc_t = torch.Tensor(num, num_priors, 4)
         conf_t = torch.LongTensor(num, num_priors)
@@ -81,7 +83,7 @@ class MultiBoxLoss(nn.Module):
             truths = targets[idx][:,:-1].data
             labels = targets[idx][:,-1].data
             defaults = priors.data
-            match(self.threshold,truths,defaults,self.variance,labels,loc_t,conf_t,idx)
+            match(self.threshold,truths,defaults,self.variance,labels,loc_t,conf_t,idx,neg_thresh=self.neg_thresh)
         if GPU:
             loc_t = loc_t.cuda()
             conf_t = conf_t.cuda()
@@ -90,6 +92,11 @@ class MultiBoxLoss(nn.Module):
         conf_t = Variable(conf_t,requires_grad=False)
 
         pos = conf_t > 0
+        notneg = conf_t != 0
+        neg = conf_t == 0
+        mid = conf_t==-1
+        conf_t[conf_t==-1] = 0
+        
         num_pos = pos.sum()
 
         pos_nz = pos.data[0].nonzero().squeeze()
@@ -103,9 +110,9 @@ class MultiBoxLoss(nn.Module):
         # Compute max conf across batch for hard negative mining
         batch_conf = conf_data.view(-1,self.num_classes)
         loss_c = log_sum_exp(batch_conf) - batch_conf.gather(1, conf_t.view(-1,1))
-
+        
         # Hard Negative Mining
-        loss_c[pos] = 0 # filter out pos boxes for now
+        loss_c[notneg] = 0 # filter out pos boxes for now
         loss_c = loss_c.view(num, -1)
         _,loss_idx = loss_c.sort(1, descending=True)
         _,idx_rank = loss_idx.sort(1)

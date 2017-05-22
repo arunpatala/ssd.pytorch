@@ -1,3 +1,4 @@
+import cv2
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,13 +41,18 @@ parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to fo
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
 parser.add_argument('--num_classes', default=2, help='num of classes')
 parser.add_argument('--dim', default=1000, help='dimension of input to model')
+parser.add_argument('--alpha', default=0.1, type=int, help='multibox alpha for loss')
+parser.add_argument('--th', default=0.5, type=float, help='threshold')
+parser.add_argument('--neg_th', default=0.0, type=float, help='threshold')
+parser.add_argument('--neg_pos', default=1, type=float, help='threshold')
 args = parser.parse_args()
 
 cfg = (v1, v2)[args.version == 'v2']
 
 #model = Network()
-
+print("building ssd")
 model = build_ssd('train', args.dim, args.num_classes)
+print("building ssd done")
 vgg_weights = torch.load(args.save_folder + args.basenet)
 print('Loading base network...')
 model.vgg.load_state_dict(vgg_weights)
@@ -66,11 +72,15 @@ model.extras.apply(weights_init)
 model.loc.apply(weights_init)
 model.conf.apply(weights_init)  
 
-criterion = MultiBoxLoss(args.num_classes, 0.5, True, 0, True, 3, 0.5, False)
+if args.cuda:
+    model.cuda()
+
+
+criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th)
 
 trainer = ModuleTrainer(model)
 
-chk = ModelCheckpoint(directory=".")
+chk = ModelCheckpoint(directory=".", monitor="loss")
 
 trainer.compile(loss=criterion,
                 optimizer='adadelta',
@@ -80,6 +90,7 @@ trainer.compile(loss=criterion,
                 #metrics=metrics, 
                 callbacks=[chk, PosNeg(model, criterion)])
 
+print("trainer compilation done")
 
 from polarbear import *
 
@@ -97,5 +108,5 @@ train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 #val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 
-trainer.fit_loader(train_loader, nb_epoch=20, verbose=1)
+trainer.fit_loader(train_loader, nb_epoch=40, verbose=1, cuda_device=0)
 

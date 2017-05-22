@@ -27,14 +27,18 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, phase, base, extras, head, num_classes,v=v):
+    def __init__(self, phase, base, extras, head, num_classes, size=300):
         super(SSD, self).__init__()
         self.phase = phase
         self.num_classes = num_classes
         # TODO: implement __call__ in PriorBox
+        if size==1000: v = v
+        else: v = v2
+        self.v = v
         self.priorbox = PriorBox(v)
         self.priors = Variable(self.priorbox.forward(), volatile=True)
-        self.size = 300
+        self.size = size
+
 
         # SSD network
         self.vgg = nn.ModuleList(base)
@@ -105,6 +109,7 @@ class SSD(nn.Module):
                 self.softmax(conf.view(-1, self.num_classes)),  # conf preds
                 self.priors                                     # default boxes
             )
+            return output
         else:
             output = (
                 loc.view(loc.size(0), -1, 4),
@@ -190,14 +195,14 @@ base = {
             512, 512, 512],
 }
 extras = {
-    #'300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
-    '300': [256],
+    '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    #'300': [256],
     '512': [],
     '1000': [256],
 }
 mbox = {
-    #'300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
-    '300': [1, 1],  # number of boxes per feature map location
+    '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
+    #'300': [1, 1],  # number of boxes per feature map location
     '512': [],
     '1000': [1, 1], 
 }
@@ -210,4 +215,4 @@ def build_ssd(phase, size=300, num_classes=21):
 
     return SSD(phase, *multibox(vgg(base[str(size)], 3),
                                 add_extras(extras[str(size)], 1024),
-                                mbox[str(size)], num_classes), num_classes)
+                                mbox[str(size)], num_classes), num_classes, size=size)
