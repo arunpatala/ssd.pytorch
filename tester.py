@@ -26,6 +26,8 @@ import argparse
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
 parser.add_argument('--start', default=0, type=int, help='starting for testing')
 parser.add_argument('--batch_size', default=8, type=int, help='starting for testing')
+parser.add_argument('--filter', default=True, type=bool, help='filter tested images')
+parser.add_argument('--reverse', default=False, type=bool, help='reverse images')
 args = parser.parse_args()
 
 
@@ -38,7 +40,7 @@ test = ds.dataset("test")
 net = build_ssd('train', 300, 6)    # initialize SSD
 net.load_state_dict(torch.load('weights/sealions_95k.pth'))
 net.cuda();
-
+net.eval();
 
 
 def gen_all(th, start=0):
@@ -106,14 +108,23 @@ def save_iid(iid, th, batch_size):
         
 
 
-def save_test(th, start=0, batch_size=8):
-    print("start",start)
-    for iid in tqdm(test.iids[start:]):
+def save_test(th, start=0, batch_size=8, flt=False, reverse=False):
+    
+    iids = test.iids[start:]
+    if flt: iids = list(filter(iids))
+    if reverse: iids = iids[::-1]
+    print("start", iids[0], len(iids), len(test.iids))
+    for iid in tqdm(iids):
         save_iid(iid, th, batch_size)
 
-    
+def filter(iids):
+    print("checking")
+    for iid in tqdm(iids):
+        fpath = ds.path("th", dataset="test", iid=iid, x="x", y="y")
+        if not os.path.exists(fpath): yield iid
+
 from torch.utils.data import DataLoader
 #gen_test(0.9, start=args.start, batch_size=args.batch_size)
-save_test(0.9, start=args.start, batch_size=args.batch_size)
+save_test(0.9, start=args.start, batch_size=args.batch_size, flt=args.filter, reverse=args.reverse)
 
 
