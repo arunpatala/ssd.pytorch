@@ -2,9 +2,6 @@
 import cv2 
 import os
 import sys
-module_path = os.path.abspath(os.path.join('..'))
-if module_path not in sys.path:
-    sys.path.append(module_path)
 
 import torch
 import torch.nn as nn
@@ -15,25 +12,27 @@ import torchvision.transforms as transforms
 from torch.utils.serialization import load_lua
 import numpy as np
 from ssd import build_ssd
-from IPython.display import display
 # from models import build_ssd as build_ssd_v1 # uncomment for older pool6 model
 from tqdm import tqdm, trange
 from polarbear import *
 from data import *
+
 import argparse
 
 
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
 parser.add_argument('--start', default=0, type=int, help='starting for testing')
 parser.add_argument('--batch_size', default=8, type=int, help='starting for testing')
-parser.add_argument('--filter', default=True, type=bool, help='filter tested images')
+parser.add_argument('--filter', default=False, type=bool, help='filter tested images')
 parser.add_argument('--reverse', default=False, type=bool, help='reverse images')
+parser.add_argument('--dataset', default="test", help='dataset')
+parser.add_argument('--mask', default=False, type=bool, help='use masked')
 args = parser.parse_args()
 
-
+print(args)
 
 ds = DataSource()
-test = ds.dataset("test")
+test = ds.dataset(args.dataset)
 
 
 
@@ -50,11 +49,11 @@ def gen_all(th, start=0):
         mimg = ds.get_mimg(iid)
         train_dataset = SLTest(ai, mimg, th=th)
         train_loader = DataLoader(train_dataset, batch_size=1)
-        ds.mkpath("th", dataset="test", iid=iid)
+        ds.mkpath("th", dataset=args.dataset, iid=iid)
         #print("dataset",iid, len(train_dataset))
         for i in range(len(train_dataset)):
             dx,dy = train_dataset.xy[i]
-            fpath = ds.path("th",iid=iid,x=dx,y=dy,dataset="test")
+            fpath = ds.path("th",iid=iid,x=dx,y=dy,dataset=args.dataset)
             if os.path.exists(fpath):continue
             #print(dx,dy)
             x,y = train_dataset[i]
@@ -77,10 +76,10 @@ def gen_iid(iid, th, batch_size):
     ai,_ = test.aimg(iid)
     mimg = ds.get_mimg(iid)
     train_dataset = SLTest(ai, mimg, th=th)
-    ds.mkpath("th", dataset="test", iid=iid)
+    ds.mkpath("th", dataset=args.dataset, iid=iid)
     #print(iid, len(train_dataset))
     for x,y,(l,c,p) in gen_dets(train_dataset, batch_size):
-        fpath = ds.path("th",iid=iid,x=x,y=y,dataset="test")
+        fpath = ds.path("th",iid=iid,x=x,y=y,dataset=args.dataset)
         if os.path.exists(fpath):continue
         #print(fpath)
         #torch.save((l,c,p), fpath)  
@@ -94,15 +93,17 @@ def gen_test(th, start=0, batch_size=8):
 
 def save_iid(iid, th, batch_size):
     ai,_ = test.aimg(iid)
-    mimg = ds.get_mimg(iid)
+    #print(args.mask)
+    if args.mask:   mimg = ds.get_mimg(iid)
+    else: mimg = None
     train_dataset = SLTest(ai, mimg, th=th)
     train_loader = iter(DataLoader(train_dataset, batch_size=batch_size, shuffle=False))
     
-    ds.mkpath("th", dataset="test", iid=iid)
-    fpath = ds.path("th",iid=iid, x="x", y="y", dataset="test")
+    ds.mkpath("th", dataset=args.dataset, iid=iid)
+    fpath = ds.path("th",iid=iid, x="x", y="y", dataset=args.dataset)
     torch.save(train_dataset.xy, fpath)
     for i,(X,Y) in enumerate(train_loader):
-        fpath = ds.path("th", iid=iid, x="batch", y=i, dataset="test")
+        fpath = ds.path("th", iid=iid, x="batch", y=i, dataset=args.dataset)
         dets = net.forward(Variable(X.cuda()))[0]
         torch.save(dets, fpath)
         
@@ -120,7 +121,7 @@ def save_test(th, start=0, batch_size=8, flt=False, reverse=False):
 def filter(iids):
     print("checking")
     for iid in tqdm(iids):
-        fpath = ds.path("th", dataset="test", iid=iid, x="x", y="y")
+        fpath = ds.path("th", dataset=args.dataset, iid=iid, x="x", y="y")
         if not os.path.exists(fpath): yield iid
 
 from torch.utils.data import DataLoader
