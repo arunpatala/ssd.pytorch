@@ -21,24 +21,31 @@ import argparse
 
 
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
-parser.add_argument('--start', default=0, type=int, help='starting for testing')
-parser.add_argument('--batch_size', default=8, type=int, help='starting for testing')
+parser.add_argument('--start', default=900, type=int, help='starting for testing')
+parser.add_argument('--batch_size', default=1, type=int, help='starting for testing')
 parser.add_argument('--filter', default=False, type=bool, help='filter tested images')
 parser.add_argument('--reverse', default=False, type=bool, help='reverse images')
-parser.add_argument('--dataset', default="test", help='dataset')
+parser.add_argument('--dataset', default="all", help='dataset')
 parser.add_argument('--mask', default=False, type=bool, help='use masked')
+parser.add_argument('--cuda', default=False, type=bool, help='use cuda')
+parser.add_argument('--size', default=1200, type=int, help='input size of network')
+parser.add_argument('--load', default='weights/sealions_95k.pth', help='input size of network')
 args = parser.parse_args()
 
 print(args)
 
 ds = DataSource()
 test = ds.dataset(args.dataset)
+print(test.iids)
 
 
+net = build_ssd('train', args.size, 6)    # initialize SSD
 
-net = build_ssd('train', 300, 6)    # initialize SSD
-net.load_state_dict(torch.load('weights/sealions_95k.pth'))
-net.cuda();
+if args.cuda: 
+    net.cuda();
+    net.load_state_dict(torch.load(args.load))
+else: 
+    net.load_state_dict(torch.load( args.load, map_location=lambda storage, loc: storage))
 net.eval();
 
 
@@ -57,7 +64,9 @@ def gen_all(th, start=0):
             if os.path.exists(fpath):continue
             #print(dx,dy)
             x,y = train_dataset[i]
-            dets = net.forward(Variable(x.cuda().unsqueeze(0)))
+            if args.cuda: x = x.cuda()
+
+            dets = net.forward(Variable(x.unsqueeze(0)))
             loc, conf, priors = dets[0]
             dets = (loc.data.cpu(),conf.data.cpu(),priors.data.cpu())
             torch.save(dets, fpath)           
@@ -68,6 +77,8 @@ def gen_dets(train_dataset, batch_size=16):
     for X,Y in train_loader:
         loc, conf, priors = net.forward(Variable(X.cuda()))[0]
         for i in  range(X.size(0)):
+            print(x,y)
+
             x,y = train_dataset.xy[cnt]
             cnt = cnt + 1
             yield x, y, (loc[i], conf[i], priors)
@@ -96,26 +107,31 @@ def save_iid(iid, th, batch_size):
     #print(args.mask)
     if args.mask:   mimg = ds.get_mimg(iid)
     else: mimg = None
-    train_dataset = SLTest(ai, mimg, th=th)
+    train_dataset = SLTest(ai, mimg, th=th, tile=args.size)
     train_loader = iter(DataLoader(train_dataset, batch_size=batch_size, shuffle=False))
     
     ds.mkpath("th", dataset=args.dataset, iid=iid)
     fpath = ds.path("th",iid=iid, x="x", y="y", dataset=args.dataset)
     torch.save(train_dataset.xy, fpath)
-    for i,(X,Y) in enumerate(train_loader):
+    for i,(X,Y) in tqdm(enumerate(train_loader), total=len(train_dataset)):
+        #print(X.size())
         fpath = ds.path("th", iid=iid, x="batch", y=i, dataset=args.dataset)
-        dets = net.forward(Variable(X.cuda()))[0]
+        if args.cuda: X = X.cuda()
+        dets = net.forward(Variable(X))[0]
+        l,c,p = dets
+        #print(l.size(), c.size(), p.size())
         torch.save(dets, fpath)
         
 
 
 def save_test(th, start=0, batch_size=8, flt=False, reverse=False):
-    
-    iids = test.iids[start:]
+    print(test.iids)
+    iids = test.iids #[ start:]
+    print(iids)
     if flt: iids = list(filter(iids))
     if reverse: iids = iids[::-1]
     print("start", iids[0], len(iids), len(test.iids))
-    for iid in tqdm(iids):
+    for iid in (iids):
         save_iid(iid, th, batch_size)
 
 def filter(iids):

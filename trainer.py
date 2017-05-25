@@ -13,6 +13,9 @@ from torchsample.initializers import *
 from torchsample.metrics import *
 import torch.nn.init as init
 
+
+import torch.optim as optim
+
 import os
 from torchvision import datasets
 
@@ -31,20 +34,22 @@ parser.add_argument('--jaccard_threshold', default=0.5, type=float, help='Min Ja
 parser.add_argument('--batch_size', default=1, type=int, help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--iterations', default=120000, type=int, help='Number of training epochs')
-parser.add_argument('--cuda', default=True, type=bool, help='Use cuda to train model')
-parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
+parser.add_argument('--cuda', default=False, type=bool, help='Use cuda to train model')
+parser.add_argument('--lr', '--learning-rate', default=0.00001, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
 parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss at each iteration')
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
-parser.add_argument('--num_classes', default=2, help='num of classes')
-parser.add_argument('--dim', default=1000, help='dimension of input to model')
-parser.add_argument('--alpha', default=0.1, type=int, help='multibox alpha for loss')
+parser.add_argument('--num_classes', default=6, help='num of classes')
+parser.add_argument('--dim', default=300, help='dimension of input to model')
+parser.add_argument('--alpha', default=1, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.5, type=float, help='threshold')
-parser.add_argument('--neg_th', default=0.0, type=float, help='threshold')
-parser.add_argument('--neg_pos', default=1, type=float, help='threshold')
+parser.add_argument('--neg_th', default=0.1, type=float, help='neg threshold')
+parser.add_argument('--neg_pos', default=3, type=float, help='ratio')
+parser.add_argument('--load', default='weights/sealions_95k.pth', help='trained model')
+parser.add_argument('--iid', default=0, type=int, help='trained model')
 args = parser.parse_args()
 
 cfg = (v1, v2)[args.version == 'v2']
@@ -74,7 +79,11 @@ model.conf.apply(weights_init)
 
 if args.cuda:
     model.cuda()
-
+if args.load is not None:
+    if args.cuda: 
+        model.load_state_dict(torch.load(args.load))
+    else: 
+        model.load_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
 
 criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th)
 
@@ -82,8 +91,11 @@ trainer = ModuleTrainer(model)
 
 chk = ModelCheckpoint(directory=".", monitor="loss")
 
+optimizer = optim.SGD(model.parameters(), lr=args.lr,
+                      momentum=args.momentum, weight_decay=args.weight_decay)
 trainer.compile(loss=criterion,
-                optimizer='adadelta',
+                optimizer=optimizer,
+                #optimizer='adadelta',
                 #regularizers=regularizers,
                 #constraints=constraints,
                 #initializers=initializers,
@@ -96,8 +108,12 @@ from polarbear import *
 
 ds = DataSource()
 all = ds.dataset("all")
-aimg,_ = all.aimg(900)
-train_dataset = SLDetection(aimg)
+aimg,_ = all.aimg(args.iid)
+aimg,_ = aimg.cropW()
+aimg = aimg.fpups()
+aimg.plot(save="trainer.png")
+#aimg = aimg.setScale(20)
+train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100)
 #train_dataset = VOCDetection(VOCroot, train_sets,  BaseTransform(
 #        ssd_dim, rgb_means), AnnTensorTransform())
 #train_dataset = TensorDataset(x_train, y_train)
@@ -107,6 +123,7 @@ train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 #        ssd_dim, rgb_means), AnnTensorTransform())
 #val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
-
-trainer.fit_loader(train_loader, nb_epoch=40, verbose=1, cuda_device=0)
+if args.cuda:
+    trainer.fit_loader(train_loader, nb_epoch=40, verbose=1, cuda_device=0)
+else: trainer.fit_loader(train_loader, nb_epoch=40, verbose=1)
 

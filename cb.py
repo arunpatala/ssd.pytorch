@@ -35,13 +35,14 @@ class PosNeg(Callback):
         img = self.net.imgs
         conf = self.softmax((self.ct.conf_data.view(-1, 2)))
         #print("conf", conf.size())
+        """
         heatmap1 = conf.data[:125*125,0].int()*255
         heatmap1 = heatmap1.contiguous().view((125,125)).cpu().numpy()
         Image.fromarray(heatmap1.astype('uint8')).save("tmp/"+str(batch)+"_himg.jpg")
         heatmap2 = conf.data[125*125:,0].int()*255
         heatmap2 = heatmap2.contiguous().view((62,62)).cpu().numpy()
         Image.fromarray(heatmap2.astype('uint8')).save("tmp/"+str(batch)+"_hhimg.jpg")
-
+        """
         targets = self.ct.targets
         #torch.save([img, targets, pos, neg], "tmp.th")
         save(img, targets, pos, neg, batch)
@@ -66,10 +67,10 @@ def save(img, tgts, pos, neg, batch):
     nann = Ann(dets=(neg*H).round().int().cpu().numpy())
     tann = Ann(dets=(tgts.data[0][:,:-1]*H).int().cpu().numpy())
     rect = True
-    pimgs = pann.plot_size(img, color=(0,255,0))
+    pimgs = pann.plot_size(img, color=(0,255,0), rect=False)
     for i in range(len(pimgs)):
         pimgs[i].save("tmp/"+str(batch)+"_"+str(i)+"pimg.jpg")
-    nimgs = nann.plot_size(img, color=(255,0,0))
+    nimgs = nann.plot_size(img, color=(255,0,0), rect=False)
     for i in range(len(nimgs)):
         nimgs[i].save("tmp/"+str(batch)+"_"+str(i)+"nimg.jpg")
 

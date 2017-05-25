@@ -16,11 +16,12 @@ from polarbear import *
 
 class SLDetection(data.Dataset):
 
-    def __init__(self, aimg, tile=1000, st=500, fcount=10):
+    def __init__(self, aimg, tile=1000, st=500, fcount=1):
         self.ids = list()
         self.tile = tile
         self.xy = []
         for aimg,x,y in aimg.tile(tile,st):
+            print(x,y)
             aimg = aimg.fpups()
             if aimg.ann.count >= fcount:
                 self.ids.append(aimg.oneclass())
@@ -50,7 +51,8 @@ class SLDetection(data.Dataset):
 
 class SLTest(data.Dataset):
 
-    def __init__(self, aimg, mimg, tile=300, st=200, th=0.9):
+    def __init__(self, aimg, mimg, tile=300, st=None, th=0.9):
+        if st is None: st = tile - 100
         self.ids = list()
         W,H = aimg.WH
         if mimg is None: 
@@ -59,7 +61,7 @@ class SLTest(data.Dataset):
         self.tile = tile
         self.xy = []
         mimg = mimg.resize(W,H)
-        for a,x,y in aimg.tile(300,200):
+        for a,x,y in aimg.tile(tile, st):
             m = mimg.cropd(x,y,300)
             p = 1-(m.np().min()/255.0)
             if(p>th):

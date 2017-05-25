@@ -28,6 +28,7 @@ parser.add_argument('--fpups', default=False, type=bool, help='filter pups')
 parser.add_argument('--dataset', default="test", help='dataset')
 parser.add_argument('--th', default=1.0, type=int, help='threshold')
 parser.add_argument('--delete', default=False, type=bool, help='delete collate')
+parser.add_argument('--size', default=300, type=int, help='input size')
 args = parser.parse_args()
 print(args)
 
@@ -70,7 +71,7 @@ def get_ann(dets, p=0.33, th=0.33, fpups=False):
     ids, count = nms(boxes, 1-scores, th, 200)
     ids = ids.cpu()
     #print(boxes)
-    ann_dets = (boxes[ids[:count]]*300).round().numpy()
+    ann_dets = (boxes[ids[:count]]*args.size).round().numpy()
     #print(ann_dets)
     ann = Ann(dets=ann_dets)
     return ann
@@ -93,7 +94,7 @@ def get_ann2(dets, cut_off=0.5, th=0.33, fpups=False):
     if(boxes.nelement()==0): return None
     boxes_cl = (conf_cl.squeeze()[c_mask]).unsqueeze(1).float()
     boxes_p = (conf_p.squeeze()[c_mask]).unsqueeze(1).float()
-    dets = torch.cat([boxes_cl, boxes_p*100, boxes*300],1)
+    dets = torch.cat([boxes_cl, boxes_p*100, boxes*args.size],1)
     #ids, count = nms(boxes, 1-scores, th, 200)
     #ids = ids.cpu()
     
