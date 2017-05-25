@@ -30,12 +30,14 @@ parser.add_argument('--mask', default=False, type=bool, help='use masked')
 parser.add_argument('--cuda', default=False, type=bool, help='use cuda')
 parser.add_argument('--size', default=1200, type=int, help='input size of network')
 parser.add_argument('--load', default='weights/sealions_95k.pth', help='input size of network')
+parser.add_argument('--iid', default=None, help='single iid to test')
 args = parser.parse_args()
 
 print(args)
 
 ds = DataSource()
 test = ds.dataset(args.dataset)
+if args.iid is not None: test.iids = [args.iid]
 print(test.iids)
 
 

@@ -20,7 +20,7 @@ import os
 from torchvision import datasets
 
 from data import VOCroot, v2, v1, AnnotationTransform, VOCDetection, detection_collate, BaseTransform, AnnTensorTransform
-from data import SLDetection, SLDetections
+from data import SLDetection
 from layers.modules import MultiBoxLoss
 from ssd import build_ssd
 from cb import PosNeg
@@ -43,10 +43,10 @@ parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
 parser.add_argument('--num_classes', default=6, help='num of classes')
-parser.add_argument('--dim', default=1200, type=int, help='dimension of input to model')
+parser.add_argument('--dim', default=300,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=1, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.5, type=float, help='threshold')
-parser.add_argument('--neg_th', default=0.2, type=float, help='neg threshold')
+parser.add_argument('--neg_th', default=0.1, type=float, help='neg threshold')
 parser.add_argument('--neg_pos', default=3, type=float, help='ratio')
 parser.add_argument('--load', default='weights/sealions_95k.pth', help='trained model')
 parser.add_argument('--iid', default=0, type=int, help='trained model')
@@ -89,7 +89,7 @@ criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos,
 
 trainer = ModuleTrainer(model)
 
-chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_{epoch}_{loss}.pth.tar')
+chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar')
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
@@ -107,10 +107,16 @@ print("trainer compilation done")
 from polarbear import *
 
 ds = DataSource()
-
+all = ds.dataset("all")
+aimg,_ = all.aimg(args.iid)
+aimg, vimg = aimg.cropW()
+aimg = aimg.fpups()
+vimg = vimg.fpups()
+aimg.plot(save="trainer.png")
+aimg.plot(save="validator.png")
 #aimg = aimg.setScale(20)
-train_dataset = SLDetections(ds.train, tile=args.dim, st=args.dim-100)
-val_dataset = SLDetections(ds.val, tile=args.dim, st=args.dim-100)
+train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100)
+val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100)
 #train_dataset = VOCDetection(VOCroot, train_sets,  BaseTransform(
 #        ssd_dim, rgb_means), AnnTensorTransform())
 #train_dataset = TensorDataset(x_train, y_train)

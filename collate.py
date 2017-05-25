@@ -29,12 +29,13 @@ parser.add_argument('--dataset', default="test", help='dataset')
 parser.add_argument('--th', default=1.0, type=int, help='threshold')
 parser.add_argument('--delete', default=False, type=bool, help='delete collate')
 parser.add_argument('--size', default=300, type=int, help='input size')
+parser.add_argument('--iid', default=None, type=int, help='single iid')
 args = parser.parse_args()
 print(args)
 
 ds = DataSource()
 test = ds.dataset(args.dataset)
-
+if args.iid is not None: test.iids = [args.iid]
 
 def gen_xy(iid):
     #print("iid", iid)

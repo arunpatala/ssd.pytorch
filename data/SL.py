@@ -11,8 +11,47 @@ if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
     import xml.etree.ElementTree as ET
-
+from tqdm import tqdm
 from polarbear import *
+
+class SLDetections(data.Dataset):
+
+    def __init__(self, aimgs, tile=1000, st=500, fcount=10):
+        self.ids = list()
+        self.tile = tile	
+        self.aimgs = aimgs
+        print("loading dataset")
+        for aimg, iid in tqdm(aimgs):
+            for a,x,y in aimg.tile(tile,st):
+                a = a.fpups()
+                if a.ann.count >= fcount:
+                    self.ids.append((iid,x,y))
+        shuffle(self.ids)
+                    
+
+    def __getitem__(self, index):
+        iid,x,y = self.ids[index]
+        aimg,_ = self.aimgs.aimg(iid)
+        aimg = aimg.cropd(x,y,self.tile).fpups()
+        target = aimg.ann.ssd(self.tile).float()
+        img = aimg.np(t=False)
+        height, width, _ = img.shape
+
+        #if self.transform is not None:
+            #img = cv2.resize(np.array(img), (self.tile, self.tile)).astype(np.float32)
+        img -= (104, 117, 123)
+        img = img.transpose(2, 0, 1)
+        img = torch.from_numpy(img).squeeze().float()
+
+        #if self.target_transform is not None:
+        #    target = self.target_transform(target, width, height)
+            # target = self.target_transform(target, width, height)
+
+        return img, target
+
+    def __len__(self):
+        return len(self.ids)
+
 
 class SLDetection(data.Dataset):
 
@@ -21,7 +60,7 @@ class SLDetection(data.Dataset):
         self.tile = tile
         self.xy = []
         for aimg,x,y in aimg.tile(tile,st):
-            print(x,y)
+            #print(x,y)
             aimg = aimg.fpups()
             if aimg.ann.count >= fcount:
                 self.ids.append(aimg.oneclass())
