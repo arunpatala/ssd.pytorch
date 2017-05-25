@@ -109,15 +109,19 @@ from polarbear import *
 ds = DataSource()
 all = ds.dataset("all")
 aimg,_ = all.aimg(args.iid)
-aimg,_ = aimg.cropW()
+aimg, vimg = aimg.cropW()
 aimg = aimg.fpups()
+vimg = vimg.fpups()
 aimg.plot(save="trainer.png")
+aimg.plot(save="validator.png")
 #aimg = aimg.setScale(20)
 train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100)
+val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100)
 #train_dataset = VOCDetection(VOCroot, train_sets,  BaseTransform(
 #        ssd_dim, rgb_means), AnnTensorTransform())
 #train_dataset = TensorDataset(x_train, y_train)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
+val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 #val_dataset = VOCDetection(VOCroot, [('2007', 'test')], BaseTransform(
 #        ssd_dim, rgb_means), AnnTensorTransform())
