@@ -26,6 +26,7 @@ class PosNeg(Callback):
         pass
 
     def on_epoch_end(self, epoch, logs=None):
+        val_detect(self.net, self.val)
         pass
 
     def on_batch_begin(self, batch, logs=None):
@@ -54,6 +55,7 @@ class PosNeg(Callback):
         pass
 
     def on_train_end(self, logs=None):
+
         pass
 
 def save(img, tgts, pos, neg, batch):
@@ -101,7 +103,7 @@ def save(img, tgts, pos, neg, batch):
 
 def val_detect(model, val_loader):
     model.phase = "test"
-    help(tqdm)
+    #help(tqdm)
     for  i,(img, ann) in tqdm(enumerate(iter(val_loader)), total=len(val_loader)):
         dets = model.forward(Variable(img))
         ann = Ann(tensor=dets[0].data,dim=img.size(2))

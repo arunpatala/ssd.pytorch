@@ -72,7 +72,7 @@ v3 = {
 #SSD300 CONFIGS
 # newer version: use additional conv11_2 layer as last layer before multibox layers
 v600 = {
-    'feature_maps' : [75, 37, 19 ],
+    'feature_maps' : [75, 37 ], #19
 
     'min_dim' : 300*2,
 

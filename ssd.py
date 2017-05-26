@@ -98,7 +98,7 @@ class SSD(nn.Module):
 
         # apply multibox head to source layers
         for (x, l, c) in zip(sources, self.loc, self.conf):
-            print(x.size(), l(x).size())
+            #print(x.size(), l(x).size())
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
 
@@ -216,7 +216,7 @@ base = {
 extras = {
     '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '1200': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
-    '600': [256, 'S', 512],
+    '600': [256],#, 'S', 512],
     #'300': [256],
     '512': [],
     '1000': [256],

@@ -78,6 +78,8 @@ class SLDetection(data.Dataset):
         img = img.transpose(2, 0, 1)
         img = torch.from_numpy(img).squeeze().float()
 
+        if target.nelement() == 0:
+            target = torch.FloatTensor([[0,0,0.0000001,0.0000001,4]]) 
         #if self.target_transform is not None:
         #    target = self.target_transform(target, width, height)
             # target = self.target_transform(target, width, height)

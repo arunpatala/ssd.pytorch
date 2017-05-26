@@ -93,19 +93,23 @@ from polarbear import *
 ds = DataSource()
 all = ds.dataset("all")
 aimg,_ = all.aimg(args.iid)
-aimg, vimg = aimg.cropW()
+aimg.ann.dbox(5)
+print(aimg.ann.unique())
+print("max_th", aimg.ann.max_th().max())
+aimg, vimg = aimg.cropH()
+aimg, vimg = vimg.cropH()
 aimg = aimg.fpups()
 vimg = vimg.fpups()
 aimg.plot(save="trainer.png")
 vimg.plot(save="validator.png")
-train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100, fcount=10)
-val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100, fcount=10)
+train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100, fcount=0)
+val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100, fcount=0)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
-print(aimg.ann.unique())
+
 trainer = ModuleTrainer(model)
 
-chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar')
+chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar', verbose=1)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)

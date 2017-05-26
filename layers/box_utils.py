@@ -100,7 +100,7 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx, neg_
     #if(truths.size(0)>3): print(a+b+c)
     #ols = overlaps.sort(0)
     #print(ols)
-    mids = torch.nonzero(overlaps.gt(0.2).sum(0)>=2)
+    mids = torch.nonzero( (overlaps.gt(0.27).sum(0)>=2) & (overlaps.max(0)[0]<0.5))
     #print(mids)
     #msk = (ols[:,0]>0.1) & (ols[:,1]>0.1)
 
