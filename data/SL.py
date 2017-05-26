@@ -11,14 +11,14 @@ if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
     import xml.etree.ElementTree as ET
-from tqdm import tqdm
+
 from polarbear import *
 
 class SLDetections(data.Dataset):
 
     def __init__(self, aimgs, tile=1000, st=500, fcount=10):
         self.ids = list()
-        self.tile = tile	
+        self.tile = tile       
         self.aimgs = aimgs
         print("loading dataset")
         for aimg, iid in tqdm(aimgs):

@@ -95,6 +95,15 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx, neg_
         truths,
         point_form(priors)
     )
+    #print("overlaps", overlaps.size())
+    torch.save(overlaps, "overlaps.th")
+    #if(truths.size(0)>3): print(a+b+c)
+    #ols = overlaps.sort(0)
+    #print(ols)
+    mids = torch.nonzero(overlaps.gt(0.2).sum(0)>=2)
+    #print(mids)
+    #msk = (ols[:,0]>0.1) & (ols[:,1]>0.1)
+
     # (Bipartite Matching)
     # [1,num_objects] best prior for each ground truth
     best_prior_overlap, best_prior_idx = overlaps.max(1)
@@ -116,6 +125,7 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx, neg_
     loc = encode(matches, priors, variances)
     loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn
     conf_t[idx] = conf  # [num_priors] top class label for each prior
+    return mids
 
 
 def encode(matched, priors, variances):

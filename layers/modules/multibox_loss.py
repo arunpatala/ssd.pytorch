@@ -83,7 +83,7 @@ class MultiBoxLoss(nn.Module):
             truths = targets[idx][:,:-1].data
             labels = targets[idx][:,-1].data
             defaults = priors.data
-            match(self.threshold,truths,defaults,self.variance,labels,loc_t,conf_t,idx,neg_thresh=self.neg_thresh)
+            mids = match(self.threshold,truths,defaults,self.variance,labels,loc_t,conf_t,idx,neg_thresh=self.neg_thresh)
         if GPU:
             loc_t = loc_t.cuda()
             conf_t = conf_t.cuda()
@@ -119,14 +119,23 @@ class MultiBoxLoss(nn.Module):
         loss_c = loss_c.view(num, -1)
         _,loss_idx = loss_c.sort(1, descending=True)
         idx_val, idx_rank = loss_idx.sort(1)
-        #print(idx_val, idx_rank)
+        #print("idx_rank",idx_rank.int())
         #idx_rank = idx_val
         num_pos = pos.long().sum(1)
-        num_neg = torch.clamp(self.negpos_ratio*num_pos, max=pos.size(1)-1)
+        num_neg = torch.clamp((self.negpos_ratio//2)*num_pos, max=pos.size(1)-1)
         neg = idx_rank < num_neg.expand_as(idx_rank)
+        rand_neg = idx_rank[0][num_neg.data[0][0]:-num_pos.data[0][0]]
+        rand_neg = rand_neg.index_select(0, Variable(torch.randperm(rand_neg.size(0))))
+        rand_neg = rand_neg[0:num_neg.data[0][0]]
+        #print(rand_neg, mids)
+        rand_neg = (torch.cat([rand_neg, Variable(mids[0,:])],0))
+        #rand_neg = Variable(mids[:,1])
+        #neg.mul_(0)
+        ones = torch.Tensor([[1]]).byte()
+        ones = ones.expand_as(neg.index_select(1, rand_neg))
+        #print("ones", ones)
+        neg.index_add_(1, rand_neg, Variable(ones) )
         
-        #rand_neg = idx_rank[num_neg:-num_pos]
-        #rand_neg = rand_neg.index_select(0, torch.randperm(rand_neg.size(0)))[:num_neg]
         #neg = torch.cat([neg, rand_neg], axis=0)
 
         neg_nz = neg.data[0].nonzero().squeeze()

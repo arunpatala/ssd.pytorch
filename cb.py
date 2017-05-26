@@ -3,16 +3,18 @@ import torch
 from polarbear import *
 from PIL import Image
 import torch.nn as nn
+from torch.autograd import Variable
 
 class PosNeg(Callback):
     """
     Abstract base class used to build new callbacks.
     """
 
-    def __init__(self, net, ct):
+    def __init__(self, net, ct, val):
         self.net = net
         self.ct = ct
         self.softmax = nn.Softmax()
+        self.val = val
 
     def set_params(self, params):
         self.params = params
@@ -48,6 +50,7 @@ class PosNeg(Callback):
         save(img, targets, pos, neg, batch)
 
     def on_train_begin(self, logs=None):
+        #val_detect(self.net, self.val)
         pass
 
     def on_train_end(self, logs=None):
@@ -56,43 +59,61 @@ class PosNeg(Callback):
 def save(img, tgts, pos, neg, batch):
     assert(img.size(0)==1)
     _,C,H,W, = img.size()
-    rgb_means = (104, 117, 123)
+    """rgb_means = (104, 117, 123)
     new_img = img[0].data.cpu().clone().numpy().transpose((1,2,0))
     new_img += rgb_means
-    img = Image.fromarray(new_img.astype('uint8'))
-
+    img = Image.fromarray(new_img.astype('uint8'))"""
+    img = img2Image(img.data)
 
 
     pann = Ann(dets=(pos*H).round().int().cpu().numpy())
     nann = Ann(dets=(neg*H).round().int().cpu().numpy())
     tann = Ann(dets=(tgts.data[0][:,:-1]*H).int().cpu().numpy())
     rect = True
+    """
     pimgs = pann.plot_size(img, color=(0,255,0), rect=False)
     for i in range(len(pimgs)):
         pimgs[i].save("weights/logs/"+str(batch)+"_"+str(i)+"pimg.jpg")
     nimgs = nann.plot_size(img, color=(255,0,0), rect=False)
     for i in range(len(nimgs)):
         nimgs[i].save("weights/logs/"+str(batch)+"_"+str(i)+"nimg.jpg")
-
+    """
     pimg = AnnImg(img, pann).plot(label=False,color=(0,255,0),rect=rect).img
-    pimg.save("weights/logs/"+str(batch)+"pimg.jpg")
+    #pimg.save("weights/logs/"+str(batch)+"pimg.jpg")
     pnimg = AnnImg(pimg, nann).plot(label=False,color=(255,0,0), rect=rect).img
     pnimg.save("weights/logs/"+str(batch)+"pnimg.jpg")
     tpnimg = AnnImg(pnimg, tann).plot(label=False,color=(0,255,255), rect=rect).img
-    tpnimg.save("weights/logs/"+str(batch)+"tpnimg.jpg")
+    #tpnimg.save("weights/logs/"+str(batch)+"tpnimg.jpg")
     AnnImg(img, nann).plot(label=False, color=(255,0,0), rect=rect, save = "weights/logs/"+str(batch)+"nimg.jpg")
     timg = AnnImg(img, tann).plot(label=False,color=(0,255,255), rect=rect).img
-    timg.save("weights/logs/"+str(batch)+"timg.jpg")
+    #timg.save("weights/logs/"+str(batch)+"timg.jpg")
     rect = False
     pimg = AnnImg(img, pann).plot(label=False,color=(0,255,0),rect=rect).img
-    pimg.save("weights/logs/"+str(batch)+"pimgc.jpg")
+    #pimg.save("weights/logs/"+str(batch)+"pimgc.jpg")
     pnimg = AnnImg(pimg, nann).plot(label=False,color=(255,0,0), rect=rect).img
     pnimg.save("weights/logs/"+str(batch)+"pnimgc.jpg")
     tpnimg = AnnImg(pnimg, tann).plot(label=False,color=(0,255,255), rect=rect).img
-    tpnimg.save("weights/logs/"+str(batch)+"tpnimgc.jpg")
+    #tpnimg.save("weights/logs/"+str(batch)+"tpnimgc.jpg")
     nimg = AnnImg(img, nann).plot(label=False,color=(255,0,0), rect=rect).img
-    nimg.save("weights/logs/"+str(batch)+"nimgc.jpg")
+    #nimg.save("weights/logs/"+str(batch)+"nimgc.jpg")
     timg = AnnImg(img, tann).plot(label=False,color=(0,255,255), rect=rect).img
-    timg.save("weights/logs/"+str(batch)+"timgc.jpg")
+    #timg.save("weights/logs/"+str(batch)+"timgc.jpg")
 
+def val_detect(model, val_loader):
+    model.phase = "test"
+    help(tqdm)
+    for  i,(img, ann) in tqdm(enumerate(iter(val_loader)), total=len(val_loader)):
+        dets = model.forward(Variable(img))
+        ann = Ann(tensor=dets[0].data,dim=img.size(2))
+        ann.cl -= 1
+        img = img2Image(img)
+        AnnImg(img, ann).plot(save="weights/logsv/{i}.jpg".format(i=i))
+        AnnImg(img, ann).plot(rect=False, label=False, save="weights/logsv/{i}c.jpg".format(i=i))
+    model.phase = "train"
 
+def img2Image(img):
+    _,C,H,W, = img.size()
+    rgb_means = (104, 117, 123)
+    new_img = img[0].cpu().clone().numpy().transpose((1,2,0))
+    new_img += rgb_means
+    return Image.fromarray(new_img.astype('uint8'))

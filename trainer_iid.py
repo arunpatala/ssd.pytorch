@@ -34,7 +34,7 @@ parser.add_argument('--jaccard_threshold', default=0.5, type=float, help='Min Ja
 parser.add_argument('--batch_size', default=1, type=int, help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--iterations', default=120000, type=int, help='Number of training epochs')
-parser.add_argument('--cuda', default=True, type=bool, help='Use cuda to train model')
+parser.add_argument('--cuda', default=False, type=bool, help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
@@ -46,10 +46,10 @@ parser.add_argument('--num_classes', default=6, help='num of classes')
 parser.add_argument('--dim', default=300,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=1, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.5, type=float, help='threshold')
-parser.add_argument('--neg_th', default=0.1, type=float, help='neg threshold')
-parser.add_argument('--neg_pos', default=3, type=float, help='ratio')
+parser.add_argument('--neg_th', default=0.2, type=float, help='neg threshold')
+parser.add_argument('--neg_pos', default=2, type=float, help='ratio')
 parser.add_argument('--load', default='weights/sealions_95k.pth', help='trained model')
-parser.add_argument('--iid', default=0, type=int, help='trained model')
+parser.add_argument('--iid', default=70, type=int, help='trained model')
 args = parser.parse_args()
 
 cfg = (v1, v2)[args.version == 'v2']
@@ -87,6 +87,22 @@ if args.load is not None:
 
 criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th)
 
+
+from polarbear import *
+
+ds = DataSource()
+all = ds.dataset("all")
+aimg,_ = all.aimg(args.iid)
+aimg, vimg = aimg.cropW()
+aimg = aimg.fpups()
+vimg = vimg.fpups()
+aimg.plot(save="trainer.png")
+vimg.plot(save="validator.png")
+train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100, fcount=10)
+val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100, fcount=10)
+train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
+val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
+
 trainer = ModuleTrainer(model)
 
 chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar')
@@ -100,28 +116,10 @@ trainer.compile(loss=criterion,
                 #constraints=constraints,
                 #initializers=initializers,
                 #metrics=metrics, 
-                callbacks=[chk, PosNeg(model, criterion)])
+                callbacks=[chk, PosNeg(model, criterion, val_loader)])
 
 print("trainer compilation done")
 
-from polarbear import *
-
-ds = DataSource()
-all = ds.dataset("all")
-aimg,_ = all.aimg(args.iid)
-aimg, vimg = aimg.cropW()
-aimg = aimg.fpups()
-vimg = vimg.fpups()
-aimg.plot(save="trainer.png")
-aimg.plot(save="validator.png")
-#aimg = aimg.setScale(20)
-train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100)
-val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100)
-#train_dataset = VOCDetection(VOCroot, train_sets,  BaseTransform(
-#        ssd_dim, rgb_means), AnnTensorTransform())
-#train_dataset = TensorDataset(x_train, y_train)
-train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
-val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 #val_dataset = VOCDetection(VOCroot, [('2007', 'test')], BaseTransform(
 #        ssd_dim, rgb_means), AnnTensorTransform())
