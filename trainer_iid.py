@@ -48,10 +48,10 @@ parser.add_argument('--alpha', default=1, type=int, help='multibox alpha for los
 parser.add_argument('--th', default=0.5, type=float, help='threshold')
 parser.add_argument('--neg_th', default=0.2, type=float, help='neg threshold')
 parser.add_argument('--neg_pos', default=2, type=float, help='ratio')
-parser.add_argument('--load', default='weights/sealions_95k.pth', help='trained model')
+parser.add_argument('--load', default=None, help='trained model')
 parser.add_argument('--iid', default=70, type=int, help='trained model')
 args = parser.parse_args()
-
+#"""weights/sealions_95k.pth"""
 cfg = (v1, v2)[args.version == 'v2']
 
 #model = Network()
@@ -81,9 +81,9 @@ if args.cuda:
     model.cuda()
 if args.load is not None:
     if args.cuda: 
-        model.load_state_dict(torch.load(args.load))
+        model.load_my_state_dict(torch.load(args.load))
     else: 
-        model.load_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
+        model.load_my_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
 
 criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th)
 
@@ -102,7 +102,7 @@ train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100, fcount=10)
 val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100, fcount=10)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
-
+print(aimg.ann.unique())
 trainer = ModuleTrainer(model)
 
 chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar')

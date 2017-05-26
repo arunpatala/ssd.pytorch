@@ -6,7 +6,7 @@ from math import sqrt as sqrt
 from itertools import product as product
 if torch.cuda.is_available():
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
-
+import numpy as np
 
 class PriorBox(object):
     """Compute priorbox coordinates in center-offset form for each source
@@ -38,6 +38,7 @@ class PriorBox(object):
 
     def forward(self):
         mean = []
+        lmean = 0
         # TODO merge these
         if self.version == 'v':
             for k, f in enumerate(self.feature_maps):
@@ -62,8 +63,9 @@ class PriorBox(object):
                     for ar in self.aspect_ratios[k]:
                         mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
                         mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
+
                 #print(k,f,len(mean)//4)
-        elif self.version == 'v2' or self.version == 'v3':
+        else:# self.version == 'v2' or self.version == 'v3':
             for k, f in enumerate(self.feature_maps):
                 for i, j in product(range(f), repeat=2):
                     f_k = self.image_size / self.steps[k]
@@ -85,8 +87,15 @@ class PriorBox(object):
                     for ar in self.aspect_ratios[k]:
                         mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
                         mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
-
-        else:
+                    #print(k,f,len(mean)//4)
+                    
+        
+        arr = (np.array(mean).reshape(-1,4)*600).astype('int32')
+        print(arr.shape)
+        w,h = arr[:,2], arr[:,3]
+        wh = set(sorted(list(zip(w.tolist(), h.tolist()))))
+        print(wh)
+        """else:
             # original version generation of prior (default) boxes
             for i, k in enumerate(self.feature_maps):
                 step_x = step_y = self.image_size/k
@@ -113,6 +122,7 @@ class PriorBox(object):
                             c_h = self.min_sizes[i] / sqrt(ar)/2
                             mean += [(c_x-c_w)/s_k, (c_y-c_h)/s_k,
                                      (c_x+c_w)/s_k, (c_y+c_h)/s_k]
+                                     """
         # back to torch land
         output = torch.Tensor(mean).view(-1, 4)
         if self.clip:

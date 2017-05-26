@@ -128,9 +128,10 @@ class MultiBoxLoss(nn.Module):
         rand_neg = rand_neg.index_select(0, Variable(torch.randperm(rand_neg.size(0))))
         rand_neg = rand_neg[0:num_neg.data[0][0]]
         #print(rand_neg, mids)
-        rand_neg = (torch.cat([rand_neg, Variable(mids[0,:])],0))
-        #rand_neg = Variable(mids[:,1])
-        #neg.mul_(0)
+        if mids.nelement()>0:
+            #rand_neg = (torch.cat([rand_neg, Variable(mids[0,:])],0))
+            rand_neg = Variable(mids[:,1])
+        neg.mul_(0)
         ones = torch.Tensor([[1]]).byte()
         ones = ones.expand_as(neg.index_select(1, rand_neg))
         #print("ones", ones)

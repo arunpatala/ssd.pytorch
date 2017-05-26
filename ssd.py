@@ -3,12 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from layers import *
-from data import v2, v1, v, v3
+from data import v2, v1, v, v3, v600
 import torchvision.transforms as transforms
 import torchvision.models as models
 import torch.backends.cudnn as cudnn
 import os
-
+from torch.nn.parameter import Parameter
 
 class SSD(nn.Module):
     """Single Shot Multibox Architecture
@@ -34,6 +34,7 @@ class SSD(nn.Module):
         # TODO: implement __call__ in PriorBox
         if size==1000: v = v
         elif size==1200: v=v3
+        elif size==600: v = v600
         else: v = v2
         self.v = v
         self.priorbox = PriorBox(v)
@@ -97,7 +98,7 @@ class SSD(nn.Module):
 
         # apply multibox head to source layers
         for (x, l, c) in zip(sources, self.loc, self.conf):
-            #print(x.size(), l(x).size())
+            print(x.size(), l(x).size())
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
 
@@ -127,6 +128,18 @@ class SSD(nn.Module):
             print('Finished!')
         else:
             print('Sorry only .pth and .pkl files supported.')
+
+    def load_my_state_dict(self, state_dict):
+ 
+        own_state = self.state_dict()
+        for name, param in state_dict.items():
+            if name not in own_state:
+                 continue
+            if isinstance(param, Parameter):
+                # backwards compatibility for serialized parameters
+                param = param.data
+            own_state[name].copy_(param)
+
 
 
 # This function is derived from torchvision VGG make_layers()
@@ -175,6 +188,7 @@ def multibox(vgg, extra_layers, cfg, num_classes):
     loc_layers = []
     conf_layers = []
     vgg_source = [24, -2]
+    #vgg_source = [-2]
     for k, v in enumerate(vgg_source):
         loc_layers += [nn.Conv2d(vgg[v].out_channels,
                                  cfg[k] * 4, kernel_size=3, padding=1)]
@@ -196,10 +210,13 @@ base = {
             512, 512, 512],
     '1000': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
+    '600': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
 }
 extras = {
     '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '1200': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    '600': [256, 'S', 512],
     #'300': [256],
     '512': [],
     '1000': [256],
@@ -208,6 +225,7 @@ mbox = {
     '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
     #'300': [1, 1],  # number of boxes per feature map location
     '1200': [4, 6, 6, 6, 4, 4], 
+    '600': [2, 2, 2, 2, 2, 2], 
     '512': [],
     '1000': [1, 1], 
 }
