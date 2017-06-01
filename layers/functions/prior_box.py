@@ -5,7 +5,7 @@ from data import v2, v1
 from math import sqrt as sqrt
 from itertools import product as product
 if torch.cuda.is_available():
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    torch.set_default_tensor_type('torch.FloatTensor')
 import numpy as np
 
 class PriorBox(object):
@@ -89,12 +89,12 @@ class PriorBox(object):
                         mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
                     #print(k,f,len(mean)//4)
                     
-        
+        print("prior boxes", len(mean))
         arr = (np.array(mean).reshape(-1,4)*600).astype('int32')
         print(arr.shape)
         w,h = arr[:,2], arr[:,3]
         wh = set(sorted(list(zip(w.tolist(), h.tolist()))))
-        print(wh)
+        print("prior_box", wh)
         """else:
             # original version generation of prior (default) boxes
             for i, k in enumerate(self.feature_maps):

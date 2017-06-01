@@ -22,14 +22,14 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
 parser.add_argument('--start', default=900, type=int, help='starting for testing')
-parser.add_argument('--batch_size', default=1, type=int, help='starting for testing')
+parser.add_argument('--batch_size', default=4, type=int, help='starting for testing')
 parser.add_argument('--filter', default=False, type=bool, help='filter tested images')
 parser.add_argument('--reverse', default=False, type=bool, help='reverse images')
-parser.add_argument('--dataset', default="all", help='dataset')
-parser.add_argument('--mask', default=False, type=bool, help='use masked')
-parser.add_argument('--cuda', default=False, type=bool, help='use cuda')
-parser.add_argument('--size', default=1200, type=int, help='input size of network')
-parser.add_argument('--load', default='weights/sealions_95k.pth', help='input size of network')
+parser.add_argument('--dataset', default="test", help='dataset')
+parser.add_argument('--mask', default=True, type=bool, help='use masked')
+parser.add_argument('--cuda', default=True, type=bool, help='use cuda')
+parser.add_argument('--size', default=300, type=int, help='input size of network')
+parser.add_argument('--load', default='weights/trainer_004_2.5533.pth.tar', help='input size of network')
 parser.add_argument('--iid', default=None, help='single iid to test')
 args = parser.parse_args()
 
@@ -115,7 +115,7 @@ def save_iid(iid, th, batch_size):
     ds.mkpath("th", dataset=args.dataset, iid=iid)
     fpath = ds.path("th",iid=iid, x="x", y="y", dataset=args.dataset)
     torch.save(train_dataset.xy, fpath)
-    for i,(X,Y) in tqdm(enumerate(train_loader), total=len(train_dataset)):
+    for i,(X,Y) in tqdm(enumerate(train_loader), total=len(train_dataset)//args.batch_size):
         #print(X.size())
         fpath = ds.path("th", iid=iid, x="batch", y=i, dataset=args.dataset)
         if args.cuda: X = X.cuda()
@@ -133,7 +133,7 @@ def save_test(th, start=0, batch_size=8, flt=False, reverse=False):
     if flt: iids = list(filter(iids))
     if reverse: iids = iids[::-1]
     print("start", iids[0], len(iids), len(test.iids))
-    for iid in (iids):
+    for iid in tqdm(iids):
         save_iid(iid, th, batch_size)
 
 def filter(iids):

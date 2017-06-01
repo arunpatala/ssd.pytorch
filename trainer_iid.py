@@ -34,7 +34,7 @@ parser.add_argument('--jaccard_threshold', default=0.5, type=float, help='Min Ja
 parser.add_argument('--batch_size', default=1, type=int, help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--iterations', default=120000, type=int, help='Number of training epochs')
-parser.add_argument('--cuda', default=False, type=bool, help='Use cuda to train model')
+parser.add_argument('--cuda', default=True, type=bool, help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
@@ -46,10 +46,13 @@ parser.add_argument('--num_classes', default=6, help='num of classes')
 parser.add_argument('--dim', default=300,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=1, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.5, type=float, help='threshold')
-parser.add_argument('--neg_th', default=0.2, type=float, help='neg threshold')
+parser.add_argument('--neg_th', default=0.1, type=float, help='neg threshold')
 parser.add_argument('--neg_pos', default=2, type=float, help='ratio')
 parser.add_argument('--load', default=None, help='trained model')
 parser.add_argument('--iid', default=70, type=int, help='trained model')
+parser.add_argument('--dataset', default='val',  help='dataset to use')
+parser.add_argument('--mids', default=None,  type=bool, help='use mids or not')
+parser.add_argument('--aug', default=False,  type=bool, help='use augmentation')
 args = parser.parse_args()
 #"""weights/sealions_95k.pth"""
 cfg = (v1, v2)[args.version == 'v2']
@@ -85,42 +88,42 @@ if args.load is not None:
     else: 
         model.load_my_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
 
-criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th)
+criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
 
 
 from polarbear import *
 
 ds = DataSource()
-all = ds.dataset("all")
+all = ds.dataset(args.dataset)
 aimg,_ = all.aimg(args.iid)
-aimg.ann.dbox(5)
-print(aimg.ann.unique())
+#aimg.ann.dbox(5)
+print("unique", aimg.ann.unique())
 print("max_th", aimg.ann.max_th().max())
 aimg, vimg = aimg.cropH()
-aimg, vimg = vimg.cropH()
+#aimg, vimg = vimg.cropH()
 aimg = aimg.fpups()
 vimg = vimg.fpups()
 aimg.plot(save="trainer.png")
 vimg.plot(save="validator.png")
-train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100, fcount=0)
-val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100, fcount=0)
+train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100, fcount=5)
+val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100, fcount=5)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 trainer = ModuleTrainer(model)
 
-chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar', verbose=1)
+chk = ModelCheckpoint(directory="weights", monitor="loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar', verbose=1)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
 trainer.compile(loss=criterion,
-                optimizer=optimizer,
+                optimizer=optimizer)
                 #optimizer='adadelta',
                 #regularizers=regularizers,
                 #constraints=constraints,
                 #initializers=initializers,
                 #metrics=metrics, 
-                callbacks=[chk, PosNeg(model, criterion, val_loader)])
+                #callbacks=[chk, PosNeg(model, criterion, val_dataset)])
 
 print("trainer compilation done")
 
@@ -131,5 +134,5 @@ print("trainer compilation done")
 
 if args.cuda:
     trainer.fit_loader(train_loader,  val_loader, nb_epoch=40, verbose=1, cuda_device=0)
-else: trainer.fit_loader(train_loader, val_loader, nb_epoch=40, verbose=1)
+else: trainer.fit_loader(train_loader, nb_epoch=40, verbose=1)
 

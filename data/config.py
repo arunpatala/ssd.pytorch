@@ -98,6 +98,60 @@ v600 = {
 
 #SSD300 CONFIGS
 # newer version: use additional conv11_2 layer as last layer before multibox layers
+v900 = {
+    'feature_maps' : [113, 56 ], #19
+
+    'min_dim' : 300*3,
+
+    'steps' : [8, 16, 32, 64, 100, 300],
+
+    'min_sizes' : [30, 60, 111, 162*2, 213*2, 264*2],
+
+    'max_sizes' : [60, 111, 162, 213*2, 264*2, 315*2],
+
+    # 'aspect_ratios' : [[2, 1/2], [2, 1/2, 3, 1/3], [2, 1/2, 3, 1/3],
+    #                    [2, 1/2, 3, 1/3], [2, 1/2], [2, 1/2]],
+    'aspect_ratios' : [[], [], [], [], [], []],
+
+    'variance' : [0.1, 0.2],
+
+    'clip' : True,
+
+    'name' : 'v3',
+
+    'two': True,
+}
+
+
+#SSD300 CONFIGS
+# newer version: use additional conv11_2 layer as last layer before multibox layers
+vXXX = {
+    'feature_maps' : [], #19
+
+    'min_dim' : 300,
+
+    'steps' : [8, 16, 32, 64, 100, 300],
+
+    'min_sizes' : [30, 60, 111, 162, 213, 264],
+
+    'max_sizes' : [60, 111, 162, 213, 264, 315],
+
+    # 'aspect_ratios' : [[2, 1/2], [2, 1/2, 3, 1/3], [2, 1/2, 3, 1/3],
+    #                    [2, 1/2, 3, 1/3], [2, 1/2], [2, 1/2]],
+    'aspect_ratios' : [[], [], [], [], [], []],
+
+    'variance' : [0.1, 0.2],
+
+    'clip' : True,
+
+    'name' : 'v3',
+
+    'two': True,
+}
+
+
+#SSD300 CONFIGS
+# newer version: use additional conv11_2 layer as last layer before multibox layers
 v2 = {
     'feature_maps' : [38, 19, 10, 5, 3, 1],
 

@@ -26,7 +26,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
 parser.add_argument('--fpups', default=False, type=bool, help='filter pups')
 parser.add_argument('--dataset', default="test", help='dataset')
-parser.add_argument('--th', default=1.0, type=int, help='threshold')
+parser.add_argument('--th', default=0.33, type=int, help='threshold')
 parser.add_argument('--delete', default=False, type=bool, help='delete collate')
 parser.add_argument('--size', default=300, type=int, help='input size')
 parser.add_argument('--iid', default=None, type=int, help='single iid')
@@ -128,14 +128,15 @@ def plot_ann(iid, fpups=False):
     if ann is None: return
     annpath = ds.path("anns_test", iid=iid, dataset=args.dataset)
     ann.save(annpath)
-
-    """aimg,_ = test.aimg(iid)
-    pimg = AnnImg(aimg.img, ann).setScale(40).plotc()
+    if args.iid is None: return
+    aimg,_ = test.aimg(iid)
+    ann = ann.allNMS(args.th)
+    pimg = AnnImg(aimg.img, ann).plotc()
     fpath = ds.path("plot", iid=iid, type="c", dataset=args.dataset)
     pimg.save(fpath)
-    pimg = AnnImg(aimg.img, ann).setScale(40).plot(label=False).img
+    pimg = AnnImg(aimg.img, ann).plot().img
     fpath = ds.path("plot", iid=iid, type="r40", dataset=args.dataset)
-    pimg.save(fpath)"""
+    pimg.save(fpath)
 
 ds.mkpath("plot", dataset=args.dataset)
 ds.mkpath("anns_test", dataset=args.dataset)

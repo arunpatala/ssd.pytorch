@@ -4,6 +4,8 @@ from polarbear import *
 from PIL import Image
 import torch.nn as nn
 from torch.autograd import Variable
+from torch.utils.data import DataLoader
+import  gpustat
 
 class PosNeg(Callback):
     """
@@ -23,14 +25,18 @@ class PosNeg(Callback):
         self.model = model
 
     def on_epoch_begin(self, epoch, logs=None):
+        #val_detect(self.net, self.val)
         pass
 
     def on_epoch_end(self, epoch, logs=None):
         val_detect(self.net, self.val)
-        pass
+        #pass
 
     def on_batch_begin(self, batch, logs=None):
         pass
+
+    def on_batch_end2(self, batch, logs=None):
+        gpustat.print_gpustat(json=False)
 
     def on_batch_end(self, batch, logs=None):
         pos = self.ct.pos_boxes
@@ -49,6 +55,7 @@ class PosNeg(Callback):
         targets = self.ct.targets
         #torch.save([img, targets, pos, neg], "tmp.th")
         save(img, targets, pos, neg, batch)
+        gpustat.print_gpustat(json=False)
 
     def on_train_begin(self, logs=None):
         #val_detect(self.net, self.val)
@@ -101,17 +108,28 @@ def save(img, tgts, pos, neg, batch):
     timg = AnnImg(img, tann).plot(label=False,color=(0,255,255), rect=rect).img
     #timg.save("weights/logs/"+str(batch)+"timgc.jpg")
 
-def val_detect(model, val_loader):
+def val_detect(model, val_dataset):
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    model.eval()
     model.phase = "test"
     #help(tqdm)
-    for  i,(img, ann) in tqdm(enumerate(iter(val_loader)), total=len(val_loader)):
-        dets = model.forward(Variable(img))
-        ann = Ann(tensor=dets[0].data,dim=img.size(2))
-        ann.cl -= 1
+    for  i,(img, ann_gt) in tqdm(enumerate(iter(val_loader)), total=len(val_loader)):
+        dets = model.forward(Variable(img.cuda()))
+        #print(dets)
+        ann = Ann(tensor=dets[0].data.cpu(),dim=img.size(2))
+        #print(ann)
+        if ann.dets is None: continue
+        if ann.fconf(50).count == 0: continue
+        #ann.cl -= 1
         img = img2Image(img)
+        ann = ann.fconf(50).allNMS(0.5)
+        aimg = AnnImg(img, ann)
+        #p,r,(gt,pd,fp,fn) = ann_gt.prec_recall(ann)
+        #print(p,r,gt.shape, pd.shape, fp.shape, fn.shape)
         AnnImg(img, ann).plot(save="weights/logsv/{i}.jpg".format(i=i))
         AnnImg(img, ann).plot(rect=False, label=False, save="weights/logsv/{i}c.jpg".format(i=i))
     model.phase = "train"
+    model.train()
 
 def img2Image(img):
     _,C,H,W, = img.size()

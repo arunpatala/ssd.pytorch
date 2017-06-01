@@ -12,21 +12,28 @@ if sys.version_info[0] == 2:
 else:
     import xml.etree.ElementTree as ET
 
+from utils.augment import * 
 from polarbear import *
 
 class SLDetections(data.Dataset):
 
-    def __init__(self, aimgs, tile=1000, st=500, fcount=10):
+    def __init__(self, aimgs, tile=1000, st=500, fcount=3, aug=False):
+        self.augs = None
+        if aug: 
+            self.augs = SSDAugmentation(tile)
+            tile = int(tile * 1.5)
+
         self.ids = list()
         self.tile = tile       
         self.aimgs = aimgs
-        print("loading dataset")
+        #print("loading dataset")
         for aimg, iid in tqdm(aimgs):
             for a,x,y in aimg.tile(tile,st):
                 a = a.fpups()
                 if a.ann.count >= fcount:
                     self.ids.append((iid,x,y))
         shuffle(self.ids)
+        self.wh = set()
                     
 
     def __getitem__(self, index):
@@ -36,11 +43,28 @@ class SLDetections(data.Dataset):
         target = aimg.ann.ssd(self.tile).float()
         img = aimg.np(t=False)
         height, width, _ = img.shape
-
+        
+        if self.augs is not None:
+            img = img.transpose(2, 0, 1)
+            img, target = self.augs(img, target.numpy())
+            img = img.transpose(1, 2, 0)
+            img = img.copy()
+        l = len(self.wh)
+        anno = (target[:,:4] * height/10).round() * 10
+        w = anno[:,2] - anno[:,0]
+        h = anno[:,3] - anno[:,1]
+        wh = set(sorted(list(zip(w.tolist(), w.tolist()))))
+        self.wh.update(wh)
+        wh = set(sorted(list(zip(h.tolist(), h.tolist()))))
+        self.wh.update(wh)
+        if(len(self.wh)!=l): print(self.wh)
+        #print(img.shape, img.min(), img.max())
         #if self.transform is not None:
             #img = cv2.resize(np.array(img), (self.tile, self.tile)).astype(np.float32)
         img -= (104, 117, 123)
         img = img.transpose(2, 0, 1)
+        
+        
         img = torch.from_numpy(img).squeeze().float()
 
         #if self.target_transform is not None:
@@ -55,7 +79,7 @@ class SLDetections(data.Dataset):
 
 class SLDetection(data.Dataset):
 
-    def __init__(self, aimg, tile=1000, st=500, fcount=1):
+    def __init__(self, aimg, tile=1000, st=500, fcount=3):
         self.ids = list()
         self.tile = tile
         self.xy = []
@@ -63,7 +87,7 @@ class SLDetection(data.Dataset):
             #print(x,y)
             aimg = aimg.fpups()
             if aimg.ann.count >= fcount:
-                self.ids.append(aimg.oneclass())
+                self.ids.append(aimg)
                 self.xy.append((x,y))
 
     def __getitem__(self, index):

@@ -3,12 +3,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from layers import *
-from data import v2, v1, v, v3, v600
+from data import v2, v1, v, v3, v600, v900, vXXX
 import torchvision.transforms as transforms
 import torchvision.models as models
 import torch.backends.cudnn as cudnn
 import os
 from torch.nn.parameter import Parameter
+import  gpustat
+import gc
+from pympler import tracker
+from pympler import refbrowser
 
 class SSD(nn.Module):
     """Single Shot Multibox Architecture
@@ -35,10 +39,13 @@ class SSD(nn.Module):
         if size==1000: v = v
         elif size==1200: v=v3
         elif size==600: v = v600
-        else: v = v2
+        elif size==900: v = v900
+        else: 
+            v = vXXX
+            v['size'] = size
         self.v = v
-        self.priorbox = PriorBox(v)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
+        self.priorbox = None
+        #self.priors = Variable(self.priorbox.forward(), volatile=True)
         self.size = size
 
 
@@ -54,6 +61,9 @@ class SSD(nn.Module):
         
         self.softmax = nn.Softmax()
         self.detect = Detect(num_classes, 0, 200, 0.01, 0.45)
+        self.f = []
+        self.tr = tracker.SummaryTracker()
+
 
     def forward(self, x):
         """Applies network layers and ops on input image(s) x.
@@ -77,35 +87,50 @@ class SSD(nn.Module):
         sources = list()
         loc = list()
         conf = list()
-        self.imgs = x
+        #self.imgs = x
+        
         # apply vgg up to conv4_3 relu
+        #gpustat.print_gpustat(json=False)
+        #gc.collect()
+        #gpustat.print_gpustat(json=False)
+        
+        self.tr.print_diff()
         for k in range(23):
             x = self.vgg[k](x)
 
         s = self.L2Norm(x)
         sources.append(s)
-
         # apply vgg up to fc7
         for k in range(23, len(self.vgg)):
             x = self.vgg[k](x)
         sources.append(x)
-
+        
         # apply extra layers and cache source layer outputs
         for k, v in enumerate(self.extras):
             x = F.relu(v(x), inplace=True)
             if k % 2 == 1:
                 sources.append(x)
-
+        self.f = []
         # apply multibox head to source layers
+        #print(torch.zeros(1))
         for (x, l, c) in zip(sources, self.loc, self.conf):
             #print(x.size(), l(x).size())
+            
+            self.f.append(l(x).size(2))
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
-
+        if self.priorbox is None:
+            print("f", self.f)
+            self.v['feature_maps'] = self.f
+            #print(self.v)
+            self.priorbox = PriorBox(self.v)
+            self.priors = Variable(self.priorbox.forward(), volatile=True)
+            
         loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)
         conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
-
+        
         if self.phase == "test":
+            #print("test mode")
             output = self.detect(
                 loc.view(loc.size(0), -1, 4),                   # loc preds
                 self.softmax(conf.view(-1, self.num_classes)),  # conf preds
@@ -118,6 +143,11 @@ class SSD(nn.Module):
                 conf.view(conf.size(0), -1, self.num_classes),
                 self.priors
             )
+        #self.tr.print_diff()
+        #ib = refbrowser.InteractiveBrowser(self)
+        #ib.main()
+
+        torch.save(output, 'output.th')
         return [output]
 
     def load_weights(self, base_file):
@@ -205,6 +235,8 @@ def multibox(vgg, extra_layers, cfg, num_classes):
 base = {
     '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
+    '900': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
     '512': [],
     '1200': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
@@ -212,9 +244,14 @@ base = {
             512, 512, 512],
     '600': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
+
+    'XXX': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
 }
 extras = {
     '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    'XXX': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    '900': [256],
     '1200': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '600': [256],#, 'S', 512],
     #'300': [256],
@@ -226,16 +263,22 @@ mbox = {
     #'300': [1, 1],  # number of boxes per feature map location
     '1200': [4, 6, 6, 6, 4, 4], 
     '600': [2, 2, 2, 2, 2, 2], 
+    'XXX': [2, 2, 2, 2, 2, 2], 
+    '900': [2, 2, 2, 2, 2, 2], 
     '512': [],
     '1000': [1, 1], 
 }
 
 
-def build_ssd(phase, size=300, num_classes=21):
+def build_ssd(phase, size=300, num_classes=21, scales=1):
+    torch.set_default_tensor_type('torch.FloatTensor')
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
         return
-
-    return SSD(phase, *multibox(vgg(base[str(size)], 3),
-                                add_extras(extras[str(size)], 1024),
-                                mbox[str(size)], num_classes), num_classes, size=size)
+    xxx = size
+    if scales is not None: 
+        xxx = 'XXX'
+        extras[xxx] = extras[xxx][:1+2*scales] 
+    return SSD(phase, *multibox(vgg(base[str(xxx)], 3),
+                                add_extras(extras[str(xxx)], 1024),
+                                mbox[str(xxx)], num_classes), num_classes, size=size)

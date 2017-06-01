@@ -7,7 +7,7 @@ from ..box_utils import match, log_sum_exp, point_form
 GPU = False
 if torch.cuda.is_available():
     GPU = True
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    #torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
 class MultiBoxLoss(nn.Module):
@@ -35,7 +35,7 @@ class MultiBoxLoss(nn.Module):
 
 
     def __init__(self, num_classes, overlap_thresh, prior_for_matching, 
-                    bkg_label, neg_mining, neg_pos, neg_overlap, encode_target, neg_thresh=None, alpha=1):
+                    bkg_label, neg_mining, neg_pos, neg_overlap, encode_target, neg_thresh=None, alpha=1, mids=None):
         super(MultiBoxLoss, self).__init__()
         self.num_classes = num_classes
         self.threshold = overlap_thresh
@@ -49,6 +49,7 @@ class MultiBoxLoss(nn.Module):
         self.alpha = alpha
         if neg_thresh is not None: self.neg_thresh = neg_thresh
         else: self.neg_thresh = overlap_thresh
+        self.mids = mids
 
     def forward(self, predictions, targets):
         """Multibox Loss
@@ -65,7 +66,10 @@ class MultiBoxLoss(nn.Module):
         #print("predictions", predictions)
         #print("targets", targets.size())
         #print(targets.size())
+        #print(targets)
         loc_data, conf_data, priors = predictions
+        loc_data, conf_data, priors = loc_data.cpu(), conf_data.cpu(), priors.cpu()
+        targets = targets.cpu()
         num = loc_data.size(0)
         num_priors = (priors.size(0))
         num_classes = self.num_classes
@@ -74,8 +78,8 @@ class MultiBoxLoss(nn.Module):
         #torch.save(conf_data, "conf_data.th")
         self.conf_data = conf_data
         # match priors (default boxes) and ground truth boxes
-        loc_t = torch.Tensor(num, num_priors, 4)
-        conf_t = torch.LongTensor(num, num_priors)
+        loc_t = torch.Tensor(num, num_priors, 4).cpu()
+        conf_t = torch.LongTensor(num, num_priors).cpu()
         for idx in range(num):
             #mask = torch.nonzero(targets.data[idx][:,-1]!=-1)
             #print(mask)
@@ -84,12 +88,13 @@ class MultiBoxLoss(nn.Module):
             labels = targets[idx][:,-1].data
             defaults = priors.data
             mids = match(self.threshold,truths,defaults,self.variance,labels,loc_t,conf_t,idx,neg_thresh=self.neg_thresh)
-        if GPU:
-            loc_t = loc_t.cuda()
-            conf_t = conf_t.cuda()
+        #if GPU:
+        #    loc_t = loc_t.cuda()
+        #    conf_t = conf_t.cuda()
         # wrap targets
-        loc_t = Variable(loc_t, requires_grad=False)
-        conf_t = Variable(conf_t,requires_grad=False)
+        #print(loc_t)
+        loc_t = Variable(loc_t, requires_grad=False).cpu()
+        conf_t = Variable(conf_t,requires_grad=False).cpu()
 
         pos = conf_t > 0
         notneg = conf_t != 0
@@ -107,6 +112,7 @@ class MultiBoxLoss(nn.Module):
         pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data)
 
         loc_p = loc_data[pos_idx].view(-1,4)
+        #print(loc_t)
         loc_t = loc_t[pos_idx].view(-1,4)
         loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
 
@@ -123,24 +129,28 @@ class MultiBoxLoss(nn.Module):
         #idx_rank = idx_val
         num_pos = pos.long().sum(1)
         #print("num_pos", num_pos)
-        num_neg = torch.max((self.negpos_ratio//2)*num_pos, Variable(torch.LongTensor([[5]])))
+        #num_neg = torch.max((self.negpos_ratio//2)*num_pos, Variable(torch.LongTensor([[5]]).cuda()))
+        num_neg = (self.negpos_ratio)*num_pos
         num_neg = torch.clamp(num_neg, max=pos.size(1)-1)
         neg = idx_rank < num_neg.expand_as(idx_rank)
-        rand_neg = idx_rank[0][num_neg.data[0][0]:-num_pos.data[0][0]]
-        rand_neg = rand_neg.index_select(0, Variable(torch.randperm(rand_neg.size(0))))
-        rand_neg = rand_neg[0:num_neg.data[0][0]]
+        """rand_neg = idx_rank[0][num_neg.data[0][0]:-num_pos.data[0][0]]
+        rand_neg = rand_neg.index_select(0, Variable(torch.randperm(rand_neg.size(0)).cuda()))
+        rand_neg = rand_neg[0:num_neg.data[0][0]]"""
         #print(rand_neg, mids)
-        if mids.nelement()>0:
-            rand_neg = (torch.cat([rand_neg, Variable(mids[0,:])],0))
-            #rand_neg = Variable(mids[:,1])
+        rand_neg = None
+        if self.mids is not None:
+            if rand_neg is not None:
+                rand_neg = (torch.cat([rand_neg, Variable(mids[0,:])],0))
+            else: rand_neg = Variable(mids[:,1])
         #neg.mul_(0)
-        ones = torch.Tensor([[1]]).byte()
-        ones = ones.expand_as(neg.index_select(1, rand_neg))
-        #print("ones", ones)
-        neg.index_add_(1, rand_neg, Variable(ones) )
         
-        #neg = torch.cat([neg, rand_neg], axis=0)
-
+        #print("ones", ones)
+        if rand_neg is not None:
+            ones = torch.Tensor([[1]]).byte().cpu()
+            ones = ones.expand_as(neg.index_select(1, rand_neg))
+            neg.index_add_(1, rand_neg, Variable(ones) )
+        
+        
         neg_nz = neg.data[0].nonzero().squeeze()
         #print("neg_nz", priors_point.data.index_select(0,neg_nz))
         #print("num_pos", num_pos, "num_neg", num_neg)

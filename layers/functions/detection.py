@@ -35,6 +35,7 @@ class Detect(Function):
             prior_data: (tensor) Prior boxes and variances from priorbox layers
                 Shape: [1,num_priors,4]
         """
+        loc_data, conf_data, prior_data = loc_data.cpu(), conf_data.cpu(), prior_data.cpu()
         num = loc_data.size(0)  # batch size
         num_priors = prior_data.size(0)
         self.output.zero_()
