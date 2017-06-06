@@ -17,29 +17,34 @@ from polarbear import *
 
 class SLDetections(data.Dataset):
 
-    def __init__(self, aimgs, tile=1000, st=500, fcount=3, aug=False):
+    def __init__(self, aimgs, tile=1000, st=500, fcount=3, aug=False, limit=None):
         self.augs = None
         if aug: 
             self.augs = SSDAugmentation(tile)
-            tile = int(tile * 1.5)
-
+            #tile = int(tile * 1.5)
+        if limit is not None: aimgs.iids = aimgs.iids[1:limit+1]
         self.ids = list()
         self.tile = tile       
         self.aimgs = aimgs
+
         #print("loading dataset")
+        th = []
         for aimg, iid in tqdm(aimgs):
+            th.append((max(aimg.ann.max_th()),iid))
             for a,x,y in aimg.tile(tile,st):
                 a = a.fpups()
                 if a.ann.count >= fcount:
                     self.ids.append((iid,x,y))
-        shuffle(self.ids)
+        #print(max(th))
+        #print(sorted(th))
+        #shuffle(self.ids)
         self.wh = set()
                     
 
     def __getitem__(self, index):
         iid,x,y = self.ids[index]
         aimg,_ = self.aimgs.aimg(iid)
-        aimg = aimg.cropd(x,y,self.tile).fpups()
+        aimg = aimg.cropd(x,y,self.tile)
         target = aimg.ann.ssd(self.tile).float()
         img = aimg.np(t=False)
         height, width, _ = img.shape
@@ -50,14 +55,16 @@ class SLDetections(data.Dataset):
             img = img.transpose(1, 2, 0)
             img = img.copy()
         l = len(self.wh)
+        height, width, _ = img.shape
         anno = (target[:,:4] * height/10).round() * 10
         w = anno[:,2] - anno[:,0]
         h = anno[:,3] - anno[:,1]
+
         wh = set(sorted(list(zip(w.tolist(), w.tolist()))))
         self.wh.update(wh)
         wh = set(sorted(list(zip(h.tolist(), h.tolist()))))
         self.wh.update(wh)
-        if(len(self.wh)!=l): print(self.wh)
+        #if(len(self.wh)!=l): print(self.wh)
         #print(img.shape, img.min(), img.max())
         #if self.transform is not None:
             #img = cv2.resize(np.array(img), (self.tile, self.tile)).astype(np.float32)
@@ -79,7 +86,12 @@ class SLDetections(data.Dataset):
 
 class SLDetection(data.Dataset):
 
-    def __init__(self, aimg, tile=1000, st=500, fcount=3):
+    def __init__(self, aimg, tile=1000, st=500, fcount=3, aug=False):
+        self.augs = None
+        if aug: 
+            self.augs = SSDAugmentation(tile)
+            tile = int(tile * 1.5)
+
         self.ids = list()
         self.tile = tile
         self.xy = []
@@ -87,20 +99,50 @@ class SLDetection(data.Dataset):
             #print(x,y)
             aimg = aimg.fpups()
             if aimg.ann.count >= fcount:
-                self.ids.append(aimg)
+                self.ids.append(aimg.oneclass())
                 self.xy.append((x,y))
+
+        self.wh = set()
 
     def __getitem__(self, index):
         aimg = self.ids[index]
         target = aimg.ann.ssd(self.tile).float()
         img = aimg.np(t=False)
         height, width, _ = img.shape
+        img1 = img
+        target1 = target
+
+
+        if self.augs is not None:
+            try:
+                img = img.transpose(2, 0, 1)
+                img, target = self.augs(img, target.numpy())
+                img = img.transpose(1, 2, 0)
+                img = img.copy()
+            except: 
+                print("ERROR")
+                img = img1
+                target = target1
+        l = len(self.wh)
+        height, width, _ = img.shape
+        anno = (target[:,:4] * height/10).round() * 10
+        w = anno[:,2] - anno[:,0]
+        h = anno[:,3] - anno[:,1]
+
+        wh = set(sorted(list(zip(w.tolist(), w.tolist()))))
+        self.wh.update(wh)
+        wh = set(sorted(list(zip(h.tolist(), h.tolist()))))
+        self.wh.update(wh)
+        #if(len(self.wh)!=l): print(self.wh)
+        
+
 
         #if self.transform is not None:
             #img = cv2.resize(np.array(img), (self.tile, self.tile)).astype(np.float32)
         img -= (104, 117, 123)
         img = img.transpose(2, 0, 1)
         img = torch.from_numpy(img).squeeze().float()
+
 
         if target.nelement() == 0:
             target = torch.FloatTensor([[0,0,0.0000001,0.0000001,4]]) 
@@ -117,6 +159,7 @@ class SLDetection(data.Dataset):
 class SLTest(data.Dataset):
 
     def __init__(self, aimg, mimg, tile=300, st=None, th=0.9):
+        
         if st is None: st = tile - 100
         self.ids = list()
         W,H = aimg.WH
@@ -143,6 +186,7 @@ class SLTest(data.Dataset):
         img = aimg.np(t=False)
         height, width, _ = img.shape
 
+        
         #if self.transform is not None:
             #img = cv2.resize(np.array(img), (self.tile, self.tile)).astype(np.float32)
         img -= (104, 117, 123)

@@ -8,7 +8,7 @@ GPU = False
 if torch.cuda.is_available():
     GPU = True
     #torch.set_default_tensor_type('torch.cuda.FloatTensor')
-
+import numpy as np
 
 class MultiBoxLoss(nn.Module):
     """SSD Weighted Loss Function
@@ -51,6 +51,12 @@ class MultiBoxLoss(nn.Module):
         else: self.neg_thresh = overlap_thresh
         self.mids = mids
 
+    def forward1(self, predictions, targets):
+        try:
+            return self.forward1(predictions, targets)
+        except:
+            return Variable(torch.Tensor([0])) 
+
     def forward(self, predictions, targets):
         """Multibox Loss
         Args:
@@ -74,7 +80,7 @@ class MultiBoxLoss(nn.Module):
         num_priors = (priors.size(0))
         num_classes = self.num_classes
         priors_point = point_form(priors)
-
+        
         #torch.save(conf_data, "conf_data.th")
         self.conf_data = conf_data
         # match priors (default boxes) and ground truth boxes
@@ -105,6 +111,7 @@ class MultiBoxLoss(nn.Module):
         num_pos = pos.sum()
 
         pos_nz = pos.data[0].nonzero().squeeze()
+        #print(pos_nz)
         # Localization Loss (Smooth L1)
         # Shape: [batch,num_priors,4]
         #print("loc_data", loc_data.size())
@@ -133,15 +140,20 @@ class MultiBoxLoss(nn.Module):
         num_neg = (self.negpos_ratio)*num_pos
         num_neg = torch.clamp(num_neg, max=pos.size(1)-1)
         neg = idx_rank < num_neg.expand_as(idx_rank)
-        """rand_neg = idx_rank[0][num_neg.data[0][0]:-num_pos.data[0][0]]
-        rand_neg = rand_neg.index_select(0, Variable(torch.randperm(rand_neg.size(0)).cuda()))
-        rand_neg = rand_neg[0:num_neg.data[0][0]]"""
+        
+        rand_neg = idx_rank[0][num_neg.data[0][0]:-num_pos.data[0][0]]
+        rand_neg = rand_neg.index_select(0, Variable(torch.randperm(rand_neg.size(0))))
+        rand_neg = rand_neg[0:num_neg.data[0][0]]
+
         #print(rand_neg, mids)
         rand_neg = None
-        if self.mids is not None:
+        if self.mids is not None and mids.nelement() > 0:
             if rand_neg is not None:
                 rand_neg = (torch.cat([rand_neg, Variable(mids[0,:])],0))
-            else: rand_neg = Variable(mids[:,1])
+            else:
+                #print(mids.nelement()) 
+                #print(mids)
+                rand_neg = Variable(mids[:,1])
         #neg.mul_(0)
         
         #print("ones", ones)
@@ -152,6 +164,10 @@ class MultiBoxLoss(nn.Module):
         
         
         neg_nz = neg.data[0].nonzero().squeeze()
+        #if self.mids is not None and mids.nelement() > 0:
+        #    print("mids", mids.nelement())
+        #    neg_nz = mids[:,1].squeeze()
+        #else: neg_nz = neg.data[0].nonzero().squeeze()[:2]
         #print("neg_nz", priors_point.data.index_select(0,neg_nz))
         #print("num_pos", num_pos, "num_neg", num_neg)
         self.neg_boxes = priors_point.data.index_select(0,neg_nz)
@@ -170,4 +186,6 @@ class MultiBoxLoss(nn.Module):
         loss_l/=N
         loss_c/=N
         #print(loss_l.data[0], loss_c.data[0])
-        return self.alpha*loss_l+loss_c
+        loss = self.alpha*loss_l+loss_c
+        #print(loss)
+        return loss

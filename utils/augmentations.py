@@ -174,8 +174,9 @@ class RandomSampleCrop(object):
             boxes (Tensor): the adjusted bounding boxes in pt form
             labels (Tensor): the class labels for each bbox
     """
-    def __init__(self, dim=600):
+    def __init__(self, dim=600, fmin=1):
         self.dim = dim
+        self.fmin = fmin
 
     def __call__(self, img, boxes, labels):
         #mode = random.choice(self.sample_options)
@@ -207,7 +208,9 @@ class RandomSampleCrop(object):
             m2 = (centers.lt(rect[0, 2:].float().expand_as(centers))).sum(1).gt(1)
             mask = (m1 + m2).gt(1).squeeze().nonzero().squeeze()
 
-            if mask.nelement() < 3: continue
+            if mask.nelement() < self.fmin: 
+                #print("continue")
+                continue
             boxes = boxes[mask].clone()
             #print("boxes", boxes)
             classes = labels[mask]
@@ -222,7 +225,10 @@ class RandomSampleCrop(object):
             boxes[:, 2:] -= rect[:, :2]
             #print("boxes", boxes)
             
-            return image.numpy(), boxes.numpy()/h, classes.numpy()
+            b = boxes.clone()
+            #print("width", (b[:,2]-b[:,0]).min(), (b[:,2]-b[:,0]).max())
+            #print("heights", (b[:,3]-b[:,1]).min(), (b[:,3]-b[:,1]).max())
+            return image.numpy(), boxes.numpy()/self.dim, classes.numpy()
 
 
 class Expand(object):
@@ -254,30 +260,49 @@ class Expand(object):
 
 class Zoom(object):
 
-    def __init__(self, min_zoom=0.7, max_zoom=2.0):
-        self.min_zoom = min_zoom
-        self.max_zoom = max_zoom
+    def __init__(self, bmin=30, bmax=200, tile=900):
+        self.bmin = bmin
+        self.bmax = bmax
+        self.tile = tile
 
     def __call__(self, image, boxes, labels):
-        bmin, bmax = 40, 200
+        bmin, bmax = self.bmin, self.bmax
 
         depth, height, width = image.shape
-        h = ((boxes[:,2]-boxes[:,0])*width).astype('int32')
+        w = ((boxes[:,2]-boxes[:,0])*width).round().astype('int32')
+        wmin, wmax = w.min(), w.max()
+        self.min_zoom = bmin/wmin
+        self.max_zoom = bmax/wmax
+
+        h = ((boxes[:,3]-boxes[:,1])*height).astype('int32')
         hmin, hmax = h.min(), h.max()
-        self.min_zoom = bmin/hmin
-        self.max_zoom = bmax/hmax
-        print("h", self.min_zoom, self.max_zoom)
+        self.min_zoom = max(bmin/hmin, self.min_zoom)
+        self.max_zoom = min(bmax/hmax, self.max_zoom)
+
+
+        #print("h", self.min_zoom, self.max_zoom, min(hmin, wmin), max(hmax, wmax))
 
         ratio = random.uniform(self.min_zoom, self.max_zoom)
         w = int(width * ratio)
-        h = int(height * ratio)
+        w = max(w, self.tile+1)
+        w = min(w, 2*self.tile)
+        h = w
+
         img = Image.fromarray(np.transpose(image,(1,2,0)).astype('uint8'))
         img = img.resize((w,h))
+        w = ((boxes[:,2]-boxes[:,0])*w).round().astype('int32')
+        wmin, wmax = w.min(), w.max()
+
+        h = ((boxes[:,3]-boxes[:,1])*h).astype('int32')
+        hmin, hmax = h.min(), h.max()
+
+        #print("hq", min(hmin, wmin), max(hmax, wmax))
 
 
 
         image = np.asarray(img, dtype = np.float)
         image = np.transpose(image, (2,0,1))
+
         return image, boxes, labels
 
 

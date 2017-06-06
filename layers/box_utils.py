@@ -100,8 +100,9 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx, neg_
     #if(truths.size(0)>3): print(a+b+c)
     #ols = overlaps.sort(0)
     #print(ols)
-    mids = torch.nonzero( (overlaps.gt(0.27).sum(0)>=2) & (overlaps.max(0)[0]<0.5))
-    #print(mids)
+    mids_mask = (overlaps.gt(0.33).sum(0)>=2)
+    mids = torch.nonzero(mids_mask & (overlaps.max(0)[0]<0.75))
+    #print("mids", mids)
     #msk = (ols[:,0]>0.1) & (ols[:,1]>0.1)
 
     # (Bipartite Matching)
@@ -120,6 +121,7 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx, neg_
         best_truth_idx[best_prior_idx[j]] = j
     matches = truths[best_truth_idx]          # Shape: [num_priors,4]
     conf = labels[best_truth_idx] + 1         # Shape: [num_priors]
+    #conf[mids_mask] = 0
     conf[best_truth_overlap <= neg_thresh] = 0  # label as background
     conf[(best_truth_overlap > neg_thresh) & (best_truth_overlap < threshold)] = -1  # label as background
     loc = encode(matches, priors, variances)

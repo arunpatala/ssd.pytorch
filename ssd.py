@@ -40,9 +40,9 @@ class SSD(nn.Module):
         elif size==1200: v=v3
         elif size==600: v = v600
         elif size==900: v = v900
-        else: 
-            v = vXXX
-            v['size'] = size
+        
+        v = vXXX
+        v['min_dim'] = size
         self.v = v
         self.priorbox = None
         #self.priors = Variable(self.priorbox.forward(), volatile=True)
@@ -87,14 +87,14 @@ class SSD(nn.Module):
         sources = list()
         loc = list()
         conf = list()
-        #self.imgs = x
+        self.imgs = x
         
         # apply vgg up to conv4_3 relu
         #gpustat.print_gpustat(json=False)
         #gc.collect()
         #gpustat.print_gpustat(json=False)
         
-        self.tr.print_diff()
+        #self.tr.print_diff()
         for k in range(23):
             x = self.vgg[k](x)
 
@@ -147,7 +147,7 @@ class SSD(nn.Module):
         #ib = refbrowser.InteractiveBrowser(self)
         #ib.main()
 
-        torch.save(output, 'output.th')
+        #torch.save(output, 'output.th')
         return [output]
 
     def load_weights(self, base_file):
@@ -270,7 +270,7 @@ mbox = {
 }
 
 
-def build_ssd(phase, size=300, num_classes=21, scales=1):
+def build_ssd(phase, size=300, num_classes=21, scales=3):
     torch.set_default_tensor_type('torch.FloatTensor')
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
@@ -278,7 +278,7 @@ def build_ssd(phase, size=300, num_classes=21, scales=1):
     xxx = size
     if scales is not None: 
         xxx = 'XXX'
-        extras[xxx] = extras[xxx][:1+2*scales] 
+        extras[xxx] = extras[xxx][:2*scales] 
     return SSD(phase, *multibox(vgg(base[str(xxx)], 3),
                                 add_extras(extras[str(xxx)], 1024),
                                 mbox[str(xxx)], num_classes), num_classes, size=size)

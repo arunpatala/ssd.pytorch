@@ -43,18 +43,19 @@ parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
 parser.add_argument('--num_classes', default=6, help='num of classes')
-parser.add_argument('--dim', default=600, type=int, help='dimension of input to model')
+parser.add_argument('--dim', default=900, type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=1, type=float, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.5, type=float, help='threshold')
 parser.add_argument('--neg_th', default=0.2, type=float, help='neg threshold')
 parser.add_argument('--neg_pos', default=2, type=float, help='ratio')
 parser.add_argument('--load', default=None, help='trained model')
 parser.add_argument('--iid', default=None, type=int, help='iid to train on')
-parser.add_argument('--mids', default=False,  type=bool, help='use mids or not')
-parser.add_argument('--exp', default="trainer", help='exp name')
-parser.add_argument('--epochs', default=1, type=int, help='exp name')
-parser.add_argument('--fcount', default=10, type=int, help='filter count')
-parser.add_argument('--aug', default=True, type=int, help='use augmentations')
+parser.add_argument('--mids', default=True,  type=bool, help='use mids or not')
+parser.add_argument('--exp', default="day1", help='exp name')
+parser.add_argument('--epochs', default=80, type=int, help='exp name')
+parser.add_argument('--fcount', default=1, type=int, help='filter count')
+parser.add_argument('--aug', default=True, type=bool, help='use augmentations')
+parser.add_argument('--limit', default=None, type=int, help='limit the dataset')
 args = parser.parse_args()
 print(args)
 cfg = (v1, v2)[args.version == 'v2']
@@ -92,23 +93,23 @@ if args.load is not None:
     else: 
         model.load_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
 
-criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th)
+criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
 
 
 from polarbear import *
 
 ds = DataSource()
 
-train_dataset = SLDetections(ds.train, tile=args.dim, st=args.dim-100, fcount=args.fcount, aug=args.aug)
+train_dataset = SLDetections(ds.train, tile=args.dim, st=args.dim-100, fcount=args.fcount, aug=args.aug, limit=args.limit)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
-val_dataset = SLDetections(ds.val, tile=args.dim, st=args.dim-100, fcount=args.fcount)
+val_dataset = SLDetections(ds.val, tile=args.dim, st=args.dim-100, fcount=args.fcount, limit=args.limit)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
 
 trainer = ModuleTrainer(model)
 
-chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename=args.exp+'_{epoch}_{loss}.pth.tar', verbose=1)
-chkt = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer.pth.tar', verbose=1)
+chk = ModelCheckpoint(directory="weights", monitor="loss", filename=args.exp+'_{epoch}_{loss}.pth.tar', verbose=1)
+chkt = ModelCheckpoint(directory="weights", monitor="loss", filename='trainer.pth.tar', verbose=1)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
@@ -124,6 +125,6 @@ trainer.compile(loss=criterion,
 print("trainer compilation done")
 #print(torch.zeros(1))
 if args.cuda:
-    trainer.fit_loader(train_loader,  val_loader, nb_epoch=args.epochs, verbose=1, cuda_device=0)
-else: trainer.fit_loader(train_loader, val_loader, nb_epoch=args.epochs, verbose=1)
+    trainer.fit_loader(train_loader, nb_epoch=args.epochs, verbose=1, cuda_device=0)
+else: trainer.fit_loader(train_loade, nb_epoch=args.epochs, verbose=1)
 

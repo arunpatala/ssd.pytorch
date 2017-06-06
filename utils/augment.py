@@ -44,8 +44,8 @@ class SSDAugmentation(object):
         self.means = means
         self.augment = aug.Compose([
             PhotometricDistort(),
-            aug.Zoom(),
-            aug.RandomSampleCrop(dim),
+            #aug.Zoom(dim),
+            #aug.RandomSampleCrop(dim),
             #aug.RandomMirror()
         ])
     def __call__(self, img, anno):

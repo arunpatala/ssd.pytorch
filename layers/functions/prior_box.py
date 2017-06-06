@@ -7,6 +7,7 @@ from itertools import product as product
 if torch.cuda.is_available():
     torch.set_default_tensor_type('torch.FloatTensor')
 import numpy as np
+from ..box_utils import match, log_sum_exp, point_form
 
 class PriorBox(object):
     """Compute priorbox coordinates in center-offset form for each source
@@ -70,9 +71,9 @@ class PriorBox(object):
                 for i, j in product(range(f), repeat=2):
                     f_k = self.image_size / self.steps[k]
                     # unit center x,y
-                    cx = (j + 0.5) / f_k
-                    cy = (i + 0.5) / f_k
-
+                    cx = (j + 0.5) / (f_k)
+                    cy = (i + 0.5) / (f_k)
+                    #print("cxy",cx,cy)
                     # aspect_ratio: 1
                     # rel size: min_size
                     s_k = self.min_sizes[k]/self.image_size
@@ -90,7 +91,7 @@ class PriorBox(object):
                     #print(k,f,len(mean)//4)
                     
         print("prior boxes", len(mean))
-        arr = (np.array(mean).reshape(-1,4)*600).astype('int32')
+        arr = (np.array(mean).reshape(-1,4)*self.image_size).astype('int32')
         print(arr.shape)
         w,h = arr[:,2], arr[:,3]
         wh = set(sorted(list(zip(w.tolist(), h.tolist()))))
@@ -125,6 +126,13 @@ class PriorBox(object):
                                      """
         # back to torch land
         output = torch.Tensor(mean).view(-1, 4)
+        priors_point = point_form(output)
+        
+        b = (priors_point * self.image_size).round().numpy()
+        print("self.image_size", self.image_size)
+        print("wunique", np.unique(b[:,2] - b[:,0]))
+        print("hunique", np.unique(b[:,3] - b[:,1]))
+
         if self.clip:
             output.clamp_(max=1, min=0)
         return output

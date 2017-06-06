@@ -43,17 +43,19 @@ parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
 parser.add_argument('--num_classes', default=6, help='num of classes')
-parser.add_argument('--dim', default=300,type=int, help='dimension of input to model')
+parser.add_argument('--dim', default=900,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=1, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.5, type=float, help='threshold')
 parser.add_argument('--neg_th', default=0.1, type=float, help='neg threshold')
-parser.add_argument('--neg_pos', default=2, type=float, help='ratio')
+parser.add_argument('--neg_pos', default=1, type=float, help='ratio')
 parser.add_argument('--load', default=None, help='trained model')
-parser.add_argument('--iid', default=70, type=int, help='trained model')
+parser.add_argument('--iid', default=900, type=int, help='trained model')
 parser.add_argument('--dataset', default='val',  help='dataset to use')
-parser.add_argument('--mids', default=None,  type=bool, help='use mids or not')
+parser.add_argument('--mids', default=True,  type=bool, help='use mids or not')
 parser.add_argument('--aug', default=False,  type=bool, help='use augmentation')
+parser.add_argument('--epochs', default=80,  type=int, help='num of epochs')
 args = parser.parse_args()
+print(args)
 #"""weights/sealions_95k.pth"""
 cfg = (v1, v2)[args.version == 'v2']
 
@@ -105,25 +107,25 @@ aimg = aimg.fpups()
 vimg = vimg.fpups()
 aimg.plot(save="trainer.png")
 vimg.plot(save="validator.png")
-train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-100, fcount=5)
-val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-100, fcount=5)
+train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-300, fcount=5, aug=args.aug)
+val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-300, fcount=5, aug=args.aug)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 trainer = ModuleTrainer(model)
 
-chk = ModelCheckpoint(directory="weights", monitor="loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar', verbose=1)
+chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar', verbose=1)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
 trainer.compile(loss=criterion,
-                optimizer=optimizer)
+                optimizer=optimizer,
                 #optimizer='adadelta',
                 #regularizers=regularizers,
                 #constraints=constraints,
                 #initializers=initializers,
                 #metrics=metrics, 
-                #callbacks=[chk, PosNeg(model, criterion, val_dataset)])
+                callbacks=[chk, PosNeg(model, criterion, val_dataset)])
 
 print("trainer compilation done")
 
@@ -133,6 +135,6 @@ print("trainer compilation done")
 #val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 if args.cuda:
-    trainer.fit_loader(train_loader,  val_loader, nb_epoch=40, verbose=1, cuda_device=0)
-else: trainer.fit_loader(train_loader, nb_epoch=40, verbose=1)
+    trainer.fit_loader(train_loader,  val_loader, nb_epoch=args.epochs, verbose=1, cuda_device=0)
+else: trainer.fit_loader(train_loader, val_loader, nb_epoch=args.epochs, verbose=1)
 
