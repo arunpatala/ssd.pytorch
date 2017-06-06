@@ -270,7 +270,7 @@ mbox = {
 }
 
 
-def build_ssd(phase, size=300, num_classes=21, scales=3):
+def build_ssd(phase, size=300, num_classes=21, scales=3, load=None, cuda=False):
     torch.set_default_tensor_type('torch.FloatTensor')
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
@@ -279,6 +279,10 @@ def build_ssd(phase, size=300, num_classes=21, scales=3):
     if scales is not None: 
         xxx = 'XXX'
         extras[xxx] = extras[xxx][:2*scales] 
-    return SSD(phase, *multibox(vgg(base[str(xxx)], 3),
+    ssd = SSD(phase, *multibox(vgg(base[str(xxx)], 3),
                                 add_extras(extras[str(xxx)], 1024),
                                 mbox[str(xxx)], num_classes), num_classes, size=size)
+    if cuda: ssd.cuda()
+    if load is not None: 
+        ssd.load_state_dict(torch.load(load))
+    return ssd

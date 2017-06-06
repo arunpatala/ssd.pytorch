@@ -71,26 +71,26 @@ def get_ann(dets, p=0.33, th=0.33, fpups=False):
     return ann
 
 def get_allann(iid, fpups=False):
-	ret = []
-	for x,y,(l,c,p) in gen_xy(iid):
-	    #print(x,y,l.size(),c.size(),p.size())
-	    ann = get_ann((l,c,p),fpups=fpups)
-	    if ann is not None: 
-	        ann.dxy(-x,-y)
-	        ret.append(ann.dets)
-	ret = np.concatenate(ret)
+    ret = []
+    for x,y,(l,c,p) in gen_xy(iid):
+        #print(x,y,l.size(),c.size(),p.size())
+        ann = get_ann((l,c,p),fpups=fpups)
+        if ann is not None: 
+            ann.dxy(-x,-y)
+            ret.append(ann.dets)
+    ret = np.concatenate(ret)
 
-	return Ann(dets=ret)
+    return Ann(dets=ret)
 
 def plot_ann(iid, fpups=False):
-	aimg,_ = test.aimg(iid)
-	ann = get_allann(iid, fpups=fpups)
-	pimg = AnnImg(aimg.img, ann).setScale(40).plotc()
-	fpath = ds.path("plot", iid=iid, type="c", dataset=args.dataset)
-	pimg.save(fpath)
-	pimg = AnnImg(aimg.img, ann).setScale(40).plot(label=False).img
-	fpath = ds.path("plot", iid=iid, type="r40", dataset=args.dataset)
-	pimg.save(fpath)
+    aimg,_ = test.aimg(iid)
+    ann = get_allann(iid, fpups=fpups)
+    pimg = AnnImg(aimg.img, ann).setScale(40).plotc()
+    fpath = ds.path("plot", iid=iid, type="c", dataset=args.dataset)
+    pimg.save(fpath)
+    pimg = AnnImg(aimg.img, ann).setScale(40).plot(label=False).img
+    fpath = ds.path("plot", iid=iid, type="r40", dataset=args.dataset)
+    pimg.save(fpath)
 
 ds.mkpath("plot", dataset=args.dataset)
 plot_ann(args.iid, fpups=args.fpups)

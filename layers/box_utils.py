@@ -96,7 +96,7 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx, neg_
         point_form(priors)
     )
     #print("overlaps", overlaps.size())
-    torch.save(overlaps, "overlaps.th")
+    #torch.save(overlaps, "overlaps.th")
     #if(truths.size(0)>3): print(a+b+c)
     #ols = overlaps.sort(0)
     #print(ols)
