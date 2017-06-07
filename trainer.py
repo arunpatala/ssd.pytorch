@@ -125,6 +125,6 @@ trainer.compile(loss=criterion,
 print("trainer compilation done")
 #print(torch.zeros(1))
 if args.cuda:
-    trainer.fit_loader(train_loader, nb_epoch=args.epochs, verbose=1, cuda_device=0)
-else: trainer.fit_loader(train_loade, nb_epoch=args.epochs, verbose=1)
+    trainer.fit_loader(val_loader, nb_epoch=args.epochs, verbose=1, cuda_device=0)
+else: trainer.fit_loader(val_loader, nb_epoch=args.epochs, verbose=1)
 

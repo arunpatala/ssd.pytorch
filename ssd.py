@@ -270,7 +270,7 @@ mbox = {
 }
 
 
-def build_ssd(phase, size=300, num_classes=21, scales=3, load=None, cuda=False):
+def build_ssd(phase, size=300, num_classes=21, scales=4, load=None, cuda=False):
     torch.set_default_tensor_type('torch.FloatTensor')
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
