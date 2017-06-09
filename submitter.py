@@ -31,6 +31,7 @@ parser.add_argument('--load', default='weights/day1_001_2.4164.pth.tar', help='i
 parser.add_argument('--iid', default=None, help='single iid to test')
 parser.add_argument('--name', default="day1", help='experiment name')
 parser.add_argument('--plot', default=True, type=bool, help='experiment name')
+parser.add_argument('--mask', default=True, type=bool, help='use mask')
 args = parser.parse_args()
 
 datasource = DataSource()
@@ -42,10 +43,18 @@ model = build_ssd('test', args.size, args.classes, load=args.load, cuda=args.cud
 datasource.mkpath('anns_test',test=args.name, dataset=args.dataset)
 if args.plot: datasource.mkpath('plot_test',test=args.name, dataset=args.dataset)
 iids = test.iids
+ret = np.loadtxt("/home/arun/Desktop/submission.csv", delimiter=',', skiprows=1).astype('int32')
+print(ret[:10,0])
+iids = ret[:,0]
+iids = iids[86:]
 if args.iid is not None: iids = [args.iid]
 for iid in tqdm(iids):
     aimg,iid = test.aimg(iid)
-    ann = aimg.test(model,args.size)
+    mimg = None
+    if args.mask:   
+        mimg = datasource.get_mimg(iid,dataset=args.dataset)
+    #print(iid)
+    ann = aimg.test(model,args.size,mimg=mimg)
     fpath = datasource.path('anns_test',test=args.name, iid=iid, dataset=args.dataset)
     ann.save(fpath)
     if args.plot: 

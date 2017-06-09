@@ -60,7 +60,7 @@ class SSD(nn.Module):
 
         
         self.softmax = nn.Softmax()
-        self.detect = Detect(num_classes, 0, 200, 0.01, 0.45)
+        self.detect = Detect(num_classes, 0, 2000, 0.01, 0.45)
         self.f = []
         self.tr = tracker.SummaryTracker()
 
@@ -270,7 +270,7 @@ mbox = {
 }
 
 
-def build_ssd(phase, size=300, num_classes=21, scales=4, load=None, cuda=False):
+def build_ssd(phase, size=300, num_classes=21, scales=3, load=None, cuda=False):
     torch.set_default_tensor_type('torch.FloatTensor')
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
