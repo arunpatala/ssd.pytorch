@@ -101,6 +101,7 @@ class MultiBoxLoss(nn.Module):
         #print(loc_t)
         loc_t = Variable(loc_t, requires_grad=False).cpu()
         conf_t = Variable(conf_t,requires_grad=False).cpu()
+        
 
         pos = conf_t > 0
         notneg = conf_t != 0

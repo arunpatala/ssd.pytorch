@@ -44,6 +44,7 @@ class SSD(nn.Module):
         v = vXXX
         v['min_dim'] = size
         self.v = v
+        self.v['sqrt'] = False
         self.priorbox = None
         #self.priors = Variable(self.priorbox.forward(), volatile=True)
         self.size = size
@@ -114,7 +115,7 @@ class SSD(nn.Module):
         # apply multibox head to source layers
         #print(torch.zeros(1))
         for (x, l, c) in zip(sources, self.loc, self.conf):
-            #print(x.size(), l(x).size())
+            #print(x.size(), l(x).size(), c(x).size())
             
             self.f.append(l(x).size(2))
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
@@ -247,10 +248,14 @@ base = {
 
     'XXX': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
+
+    'X': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
 }
 extras = {
     '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     'XXX': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    'X': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '900': [256],
     '1200': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '600': [256],#, 'S', 512],
@@ -264,20 +269,21 @@ mbox = {
     '1200': [4, 6, 6, 6, 4, 4], 
     '600': [2, 2, 2, 2, 2, 2], 
     'XXX': [2, 2, 2, 2, 2, 2], 
+    'X': [1, 1, 1, 1, 1, 1], 
     '900': [2, 2, 2, 2, 2, 2], 
     '512': [],
     '1000': [1, 1], 
 }
 
 
-def build_ssd(phase, size=300, num_classes=21, scales=3, load=None, cuda=False):
+def build_ssd(phase, size=300, num_classes=21, scales=0, load=None, cuda=False):
     torch.set_default_tensor_type('torch.FloatTensor')
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
         return
     xxx = size
     if scales is not None: 
-        xxx = 'XXX'
+        xxx = 'X'
         extras[xxx] = extras[xxx][:2*scales] 
     ssd = SSD(phase, *multibox(vgg(base[str(xxx)], 3),
                                 add_extras(extras[str(xxx)], 1024),

@@ -44,16 +44,8 @@ class PosNeg(Callback):
         pos = self.ct.pos_boxes
         neg = self.ct.neg_boxes
         img = self.net.imgs
-        conf = self.softmax((self.ct.conf_data.view(-1, 2)))
-        #print("conf", conf.size())
-        """
-        heatmap1 = conf.data[:125*125,0].int()*255
-        heatmap1 = heatmap1.contiguous().view((125,125)).cpu().numpy()
-        Image.fromarray(heatmap1.astype('uint8')).save("weights/logs/"+str(batch)+"_himg.jpg")
-        heatmap2 = conf.data[125*125:,0].int()*255
-        heatmap2 = heatmap2.contiguous().view((62,62)).cpu().numpy()
-        Image.fromarray(heatmap2.astype('uint8')).save("weights/logs/"+str(batch)+"_hhimg.jpg")
-        """
+        conf = self.softmax((self.ct.conf_data.view(-1, 6)))
+        hmsave(conf, batch)
         targets = self.ct.targets
         #torch.save([img, targets, pos, neg], "tmp.th")
         save(img, targets, pos, neg, batch)
@@ -66,7 +58,18 @@ class PosNeg(Callback):
     def on_train_end(self, logs=None):
 
         pass
-
+def hmsave(conf, batch):
+    print("conf", conf.size())
+    i = 75
+    heatmap1 = (conf.data[:i*i,0]*255).int()
+    heatmap1 = heatmap1.contiguous().view((i,i)).cpu().numpy()
+    Image.fromarray(heatmap1.astype('uint8')).save("weights/logs/"+str(batch)+"_himg.jpg")
+    heatmap2 = (conf.data[i*i:,0]*255).int()
+    i = 37
+    heatmap2 = heatmap2.contiguous().view((37,37)).cpu().numpy()
+    print(heatmap2)
+    Image.fromarray(heatmap2.astype('uint8')).save("weights/logs/"+str(batch)+"_hhimg.jpg")
+    
 def save(img, tgts, pos, neg, batch):
     assert(img.size(0)==1)
     _,C,H,W, = img.size()
