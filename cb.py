@@ -27,12 +27,12 @@ class PosNeg(Callback):
         self.model = model
 
     def on_epoch_begin(self, epoch, logs=None):
-        #val_detect(self.net, self.ct, self.val)
-        pass
-
-    def on_epoch_end(self, epoch, logs=None):
         val_detect(self.net, self.ct, self.val)
         #pass
+
+    def on_epoch_end(self, epoch, logs=None):
+        #val_detect(self.net, self.ct, self.val)
+        pass
 
     def on_batch_begin(self, batch, logs=None):
         pass
@@ -58,17 +58,17 @@ class PosNeg(Callback):
     def on_train_end(self, logs=None):
 
         pass
-def hmsave(conf, batch):
+def hmsave(conf, batch, folder='weights/logs'):
     print("conf", conf.size())
     i = 75
     heatmap1 = (conf.data[:i*i,0]*255).int()
     heatmap1 = heatmap1.contiguous().view((i,i)).cpu().numpy()
-    Image.fromarray(heatmap1.astype('uint8')).save("weights/logs/"+str(batch)+"_himg.jpg")
+    Image.fromarray(heatmap1.astype('uint8')).save(folder+str(batch)+"_himg.jpg")
     heatmap2 = (conf.data[i*i:,0]*255).int()
     i = 37
     heatmap2 = heatmap2.contiguous().view((37,37)).cpu().numpy()
     print(heatmap2)
-    Image.fromarray(heatmap2.astype('uint8')).save("weights/logs/"+str(batch)+"_hhimg.jpg")
+    Image.fromarray(heatmap2.astype('uint8')).save(folder+str(batch)+"_hhimg.jpg")
     
 def save(img, tgts, pos, neg, batch):
     assert(img.size(0)==1)
@@ -116,7 +116,7 @@ def save(img, tgts, pos, neg, batch):
     timg = AnnImg(img, tann).plot(label=False,color=(0,255,255), rect=rect).img
     #timg.save("weights/logs/"+str(batch)+"timgc.jpg")
 
-def val_detect(model, ct, val_dataset):
+def val_detect(model, ct, val_dataset, cuda=False):
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
     model.eval()
     model.phase = "test"
@@ -125,7 +125,10 @@ def val_detect(model, ct, val_dataset):
     pdc,fpc,fnc = 0,0,0
     s = set()
     for  i,(img, ann_gt) in tqdm(enumerate(iter(val_loader)), total=len(val_loader)):
-        dets = model.forward(Variable(img.cuda()))
+        if cuda: img = img.cuda()
+        dets = model.forward(Variable(img))
+        hmsave(model.conf_output,i,folder='weights/logsv/')
+
         #loss += ct.forward(lcp,Variable(ann_gt)).data[0]
         #print(dets)
         dim = img.size(2)
