@@ -62,7 +62,7 @@ class SSD(nn.Module):
         
         self.softmax = nn.Softmax()
         self.detect = Detect(num_classes, 0, 2000, 0.01, 0.45)
-        self.f = []
+        self.fmap = []
         self.tr = tracker.SummaryTracker()
 
 
@@ -111,18 +111,18 @@ class SSD(nn.Module):
             x = F.relu(v(x), inplace=True)
             if k % 2 == 1:
                 sources.append(x)
-        self.f = []
+        self.fmap = []
         # apply multibox head to source layers
         #print(torch.zeros(1))
         for (x, l, c) in zip(sources, self.loc, self.conf):
             #print(x.size(), l(x).size(), c(x).size())
             
-            self.f.append(l(x).size(2))
+            self.fmap.append(l(x).size(2))
             loc.append(l(x).permute(0, 2, 3, 1).contiguous())
             conf.append(c(x).permute(0, 2, 3, 1).contiguous())
         if self.priorbox is None:
-            print("f", self.f)
-            self.v['feature_maps'] = self.f
+            print("fmap", self.fmap)
+            self.v['feature_maps'] = self.fmap
             #print(self.v)
             self.priorbox = PriorBox(self.v)
             self.priors = Variable(self.priorbox.forward(), volatile=True)

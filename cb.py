@@ -45,7 +45,7 @@ class PosNeg(Callback):
         neg = self.ct.neg_boxes
         img = self.net.imgs
         conf = self.softmax((self.ct.conf_data.view(-1, 6)))
-        hmsave(conf, batch)
+        hmsave(conf, batch, fmap=self.net.fmap)
         targets = self.ct.targets
         #torch.save([img, targets, pos, neg], "tmp.th")
         save(img, targets, pos, neg, batch)
@@ -58,16 +58,16 @@ class PosNeg(Callback):
     def on_train_end(self, logs=None):
 
         pass
-def hmsave(conf, batch, folder='weights/logs'):
-    print("conf", conf.size())
-    i = 75
+def hmsave(conf, batch, fmap=[75,37], folder='weights/logs/'):
+    #print("conf", conf.size())
+    i = fmap[0]
     heatmap1 = (conf.data[:i*i,0]*255).int()
     heatmap1 = heatmap1.contiguous().view((i,i)).cpu().numpy()
     Image.fromarray(heatmap1.astype('uint8')).save(folder+str(batch)+"_himg.jpg")
     heatmap2 = (conf.data[i*i:,0]*255).int()
-    i = 37
-    heatmap2 = heatmap2.contiguous().view((37,37)).cpu().numpy()
-    print(heatmap2)
+    i = fmap[1]
+    heatmap2 = heatmap2.contiguous().view((i,i)).cpu().numpy()
+    #print(heatmap2)
     Image.fromarray(heatmap2.astype('uint8')).save(folder+str(batch)+"_hhimg.jpg")
     
 def save(img, tgts, pos, neg, batch):
@@ -116,7 +116,7 @@ def save(img, tgts, pos, neg, batch):
     timg = AnnImg(img, tann).plot(label=False,color=(0,255,255), rect=rect).img
     #timg.save("weights/logs/"+str(batch)+"timgc.jpg")
 
-def val_detect(model, ct, val_dataset, cuda=False):
+def val_detect(model, ct, val_dataset, cuda=True):
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
     model.eval()
     model.phase = "test"
@@ -127,7 +127,7 @@ def val_detect(model, ct, val_dataset, cuda=False):
     for  i,(img, ann_gt) in tqdm(enumerate(iter(val_loader)), total=len(val_loader)):
         if cuda: img = img.cuda()
         dets = model.forward(Variable(img))
-        hmsave(model.conf_output,i,folder='weights/logsv/')
+        hmsave(model.conf_output,i,folder='weights/logsv/',fmap=model.fmap)
 
         #loss += ct.forward(lcp,Variable(ann_gt)).data[0]
         #print(dets)
