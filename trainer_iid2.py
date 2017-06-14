@@ -21,9 +21,9 @@ from torchvision import datasets
 
 from data import VOCroot, v2, v1, AnnotationTransform, VOCDetection, detection_collate, BaseTransform, AnnTensorTransform
 from data import SLDetection
-from layers.modules import MultiBoxLoss
+from layers import MultiBoxLoss, HeatMapLoss
 from ssd import build_ssd
-from cb import PosNeg
+from hm import PosNeg
 
 import argparse
 
@@ -43,14 +43,14 @@ parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
 parser.add_argument('--num_classes', default=6, help='num of classes')
-parser.add_argument('--dim', default=900,type=int, help='dimension of input to model')
+parser.add_argument('--dim', default=411,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=0, type=int, help='multibox alpha for loss')
-parser.add_argument('--th', default=0.5, type=float, help='threshold')
-parser.add_argument('--neg_th', default=0.45, type=float, help='neg threshold')
+parser.add_argument('--th', default=0.33, type=float, help='threshold')
+parser.add_argument('--neg_th', default=0.30, type=float, help='neg threshold')
 parser.add_argument('--neg_pos', default=1, type=float, help='ratio')
 parser.add_argument('--load', default=None, help='trained model')
-parser.add_argument('--iid', default=920, type=int, help='trained model')
-parser.add_argument('--dataset', default='val',  help='dataset to use')
+parser.add_argument('--iid', default=411, type=int, help='trained model')
+parser.add_argument('--dataset', default='all',  help='dataset to use')
 parser.add_argument('--mids', default=False,  type=bool, help='use mids or not')
 parser.add_argument('--aug', default=False,  type=bool, help='use augmentation')
 parser.add_argument('--epochs', default=80,  type=int, help='num of epochs')
@@ -76,6 +76,7 @@ def weights_init(m):
         xavier(m.weight.data)
         m.bias.data.zero_()
 
+
 print('Initializing weights...')
 # initialize newly added layers' weights with xavier method
 model.extras.apply(weights_init)
@@ -89,8 +90,11 @@ if args.load is not None:
         model.load_my_state_dict(torch.load(args.load))
     else: 
         model.load_my_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
-
-criterion = HeatMapLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
+        
+#criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
+criterion = HeatMapLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 
+                        0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, 
+                        mids=args.mids, dim=args.dim, fmap=model.fmap)
 
 
 from polarbear import *
@@ -98,12 +102,14 @@ from polarbear import *
 ds = DataSource()
 all = ds.dataset(args.dataset)
 aimg,_ = all.aimg(args.iid)
-aimg = aimg.fpups().oneclass().setbox(40)
+aimg = aimg.fpups().oneclass().scale(3).setbox(40)
 #aimg.ann.dbox(5)
 print("unique", aimg.ann.unique())
 print("max_th", aimg.ann.max_th().max())
-aimg, vimg = aimg.cropH()
-#aimg, vimg = vimg.cropH()
+aimg, vimg = aimg.bcrop()
+
+print("train count",aimg.count)
+print("val count",vimg.count)
 aimg.plot(save="weights/trainer.png")
 vimg.plot(save="weights/validator.png")
 train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-300, fcount=5, aug=args.aug)
@@ -134,6 +140,6 @@ print("trainer compilation done")
 #val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 if args.cuda:
-    trainer.fit_loader(train_loader,  val_loader, nb_epoch=args.epochs, verbose=1, cuda_device=0)
+    trainer.fit_loader(train_loader, val_loader, nb_epoch=args.epochs, verbose=1, cuda_device=0)
 else: trainer.fit_loader(train_loader, val_loader, nb_epoch=args.epochs, verbose=1)
 

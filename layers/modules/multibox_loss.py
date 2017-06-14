@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from data import v2 as cfg
 from ..box_utils import match, log_sum_exp, point_form
+from random import random
 GPU = False
 if torch.cuda.is_available():
     GPU = True
@@ -50,6 +51,7 @@ class MultiBoxLoss(nn.Module):
         if neg_thresh is not None: self.neg_thresh = neg_thresh
         else: self.neg_thresh = overlap_thresh
         self.mids = mids
+        self.softmax = nn.Softmax()
 
     def forward1(self, predictions, targets):
         try:
@@ -86,6 +88,8 @@ class MultiBoxLoss(nn.Module):
         # match priors (default boxes) and ground truth boxes
         loc_t = torch.Tensor(num, num_priors, 4).cpu()
         conf_t = torch.LongTensor(num, num_priors).cpu()
+        neg_thresh = self.neg_thresh
+        if random() > 0.5: neg_thresh = 0
         for idx in range(num):
             #mask = torch.nonzero(targets.data[idx][:,-1]!=-1)
             #print(mask)
@@ -93,7 +97,7 @@ class MultiBoxLoss(nn.Module):
             truths = targets[idx][:,:-1].data
             labels = targets[idx][:,-1].data
             defaults = priors.data
-            mids = match(self.threshold,truths,defaults,self.variance,labels,loc_t,conf_t,idx,neg_thresh=self.neg_thresh)
+            mids = match(self.threshold,truths,defaults,self.variance,labels,loc_t,conf_t,idx,neg_thresh=neg_thresh)
         #if GPU:
         #    loc_t = loc_t.cuda()
         #    conf_t = conf_t.cuda()
@@ -179,6 +183,8 @@ class MultiBoxLoss(nn.Module):
         neg_idx = neg.unsqueeze(2).expand_as(conf_data)
         conf_p = conf_data[(pos_idx+neg_idx).gt(0)].view(-1,self.num_classes)
         targets_weighted = conf_t[(pos+neg).gt(0)]
+        print("conf_p", conf_p.size())
+        print("targets", targets_weighted.size())
         loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False)
 
         # Sum of losses: L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N

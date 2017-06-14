@@ -31,7 +31,7 @@ class PosNeg(Callback):
         pass
 
     def on_epoch_end(self, epoch, logs=None):
-        val_detect(self.net, self.ct, self.val)
+        #val_detect(self.net, self.ct, self.val)
         pass
 
     def on_batch_begin(self, batch, logs=None):
@@ -41,15 +41,14 @@ class PosNeg(Callback):
         gpustat.print_gpustat(json=False)
     
     def on_batch_end(self, batch, logs=None):
-        img = self.net.imgs
-        conf = self.softmax((self.ct.conf_data.view(-1, 6)))
-        hmsave(conf, batch, fmap=self.net.fmap)
-        #targets = self.ct.targets
-        #pos = self.ct.pos_boxes
-        #neg = self.ct.neg_boxes
-        
-        #save(img, targets, pos, neg, batch)
-        
+        fpath = "weights/logs/{batch}".format(batch=batch)
+        fpath = fpath + '{type}.jpg'
+        img = img2Image(self.net.imgs.data)
+        himg = self.ct.himg
+        himg.plot().save(fpath.format(type="himg"))
+        pnimg = self.ct.pnimg
+        AnnImg(img, pnimg.ann).plotc().save(fpath.format(type="pnimg"))
+        torch.save(himg,fpath.format(type="th"))
         
     def on_train_begin(self, logs=None):
         #val_detect(self.net, self.val)
@@ -58,63 +57,6 @@ class PosNeg(Callback):
     def on_train_end(self, logs=None):
 
         pass
-def hmsave(conf, batch, fmap=[75,37], folder='weights/logs/'):
-    #print("conf", conf.size())
-    i = fmap[0]
-    heatmap1 = (conf.data[:i*i,0]*255).int()
-    heatmap1 = heatmap1.contiguous().view((i,i)).cpu().numpy()
-    Image.fromarray(heatmap1.astype('uint8')).save(folder+str(batch)+"_himg.jpg")
-    heatmap2 = (conf.data[i*i:,0]*255).int()
-    i = fmap[1]
-    heatmap2 = heatmap2.contiguous().view((i,i)).cpu().numpy()
-    #print(heatmap2)
-    Image.fromarray(heatmap2.astype('uint8')).save(folder+str(batch)+"_hhimg.jpg")
-    
-def save(img, tgts, pos, neg, batch):
-    assert(img.size(0)==1)
-    _,C,H,W, = img.size()
-    """rgb_means = (104, 117, 123)
-    new_img = img[0].data.cpu().clone().numpy().transpose((1,2,0))
-    new_img += rgb_means
-    img = Image.fromarray(new_img.astype('uint8'))"""
-    img = img2Image(img.data)
-
-
-    pann = Ann(dets=(pos*H).round().int().cpu().numpy())
-    #print("pos",pann.unique())
-    nann = Ann(dets=(neg*H).round().int().cpu().numpy())
-    #print("neg",nann.unique())
-    tann = Ann(dets=(tgts.data[0][:,:-1]*H).int().cpu().numpy())
-    #print("truth",tann.unique())
-    rect = True
-    """
-    pimgs = pann.plot_size(img, color=(0,255,0), rect=False)
-    for i in range(len(pimgs)):
-        pimgs[i].save("weights/logs/"+str(batch)+"_"+str(i)+"pimg.jpg")
-    nimgs = nann.plot_size(img, color=(255,0,0), rect=False)
-    for i in range(len(nimgs)):
-        nimgs[i].save("weights/logs/"+str(batch)+"_"+str(i)+"nimg.jpg")
-    """
-    pimg = AnnImg(img, pann).plot(label=False,color=(0,255,0),rect=rect).img
-    #pimg.save("weights/logs/"+str(batch)+"pimg.jpg")
-    pnimg = AnnImg(pimg, nann).plot(label=False,color=(255,0,0), rect=rect).img
-    pnimg.save("weights/logs/"+str(batch)+"pnimg.jpg")
-    tpnimg = AnnImg(pnimg, tann).plot(label=False,color=(0,255,255), rect=rect).img
-    #tpnimg.save("weights/logs/"+str(batch)+"tpnimg.jpg")
-    AnnImg(img, nann).plot(label=False, color=(255,0,0), rect=rect, save = "weights/logs/"+str(batch)+"nimg.jpg")
-    timg = AnnImg(img, tann).plot(label=False,color=(0,255,255), rect=rect).img
-    timg.save("weights/logs/"+str(batch)+"timg.jpg")
-    rect = False
-    nimg = AnnImg(img, nann).plot(label=False,color=(255,0,0),rect=rect).img
-    #pimg.save("weights/logs/"+str(batch)+"pimgc.jpg")
-    pnimg = AnnImg(nimg, pann).plot(label=False,color=(0,255,0), rect=rect).img
-    pnimg.save("weights/logs/"+str(batch)+"pnimgc.jpg")
-    tpnimg = AnnImg(pnimg, tann).plot(label=False,color=(0,255,255), rect=rect).img
-    #tpnimg.save("weights/logs/"+str(batch)+"tpnimgc.jpg")
-    nimg = AnnImg(img, nann).plot(label=False,color=(255,0,0), rect=rect).img
-    #nimg.save("weights/logs/"+str(batch)+"nimgc.jpg")
-    timg = AnnImg(img, tann).plot(label=False,color=(0,255,255), rect=rect).img
-    #timg.save("weights/logs/"+str(batch)+"timgc.jpg")
 
 def val_detect(model, ct, val_dataset, cuda=True):
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
