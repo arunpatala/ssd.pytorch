@@ -43,25 +43,37 @@ parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
 parser.add_argument('--num_classes', default=6, help='num of classes')
-parser.add_argument('--dim', default=411,type=int, help='dimension of input to model')
+parser.add_argument('--dim', default=800,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=0, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.33, type=float, help='threshold')
 parser.add_argument('--neg_th', default=0.30, type=float, help='neg threshold')
 parser.add_argument('--neg_pos', default=1, type=float, help='ratio')
 parser.add_argument('--load', default=None, help='trained model')
-parser.add_argument('--iid', default=411, type=int, help='trained model')
+parser.add_argument('--iid', default=0, type=int, help='trained model')
 parser.add_argument('--dataset', default='all',  help='dataset to use')
 parser.add_argument('--mids', default=False,  type=bool, help='use mids or not')
 parser.add_argument('--aug', default=False,  type=bool, help='use augmentation')
-parser.add_argument('--epochs', default=80,  type=int, help='num of epochs')
+parser.add_argument('--epochs', default=10,  type=int, help='num of epochs')
+parser.add_argument('--scale', default=1,  type=float, help='use scaled image')
+parser.add_argument('--neg', default=True,  type=bool, help='negative random')
+parser.add_argument('--hneg', default=True,  type=bool, help='hard negetive mining')
+parser.add_argument('--vor', default=False,  type=bool, help='use voronoi neg samples')
+parser.add_argument('--fcount', default=0,  type=int, help='min count of sealions')
 args = parser.parse_args()
 print(args)
 #"""weights/sealions_95k.pth"""
 cfg = (v1, v2)[args.version == 'v2']
 
+
+
+#criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
+criterion = HeatMapLoss(args.num_classes, dim=args.dim, ds=None,
+                        neg=args.neg, hneg=args.hneg, vor=args.vor, 
+                        dir='weights/logs{iid}_'.format(iid=args.iid))
+
 #model = Network()
 print("building ssd")
-model = build_ssd('train', args.dim, args.num_classes)
+model = build_ssd('train', args.dim, args.num_classes, ct=criterion)
 print("building ssd done")
 vgg_weights = torch.load(args.save_folder + args.basenet)
 print('Loading base network...')
@@ -91,10 +103,6 @@ if args.load is not None:
     else: 
         model.load_my_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
         
-#criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
-criterion = HeatMapLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 
-                        0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, 
-                        mids=args.mids, dim=args.dim, fmap=model.fmap)
 
 
 from polarbear import *
@@ -102,7 +110,7 @@ from polarbear import *
 ds = DataSource()
 all = ds.dataset(args.dataset)
 aimg,_ = all.aimg(args.iid)
-aimg = aimg.fpups().oneclass().scale(3).setbox(40)
+aimg = aimg.rescale().fpups().oneclass().scale(args.scale)#.dbox(-10)
 #aimg.ann.dbox(5)
 print("unique", aimg.ann.unique())
 print("max_th", aimg.ann.max_th().max())
@@ -112,14 +120,14 @@ print("train count",aimg.count)
 print("val count",vimg.count)
 aimg.plot(save="weights/trainer.png")
 vimg.plot(save="weights/validator.png")
-train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-300, fcount=5, aug=args.aug)
-val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-300, fcount=5, aug=args.aug)
+train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-300, fcount=args.fcount, aug=args.aug, ct=criterion)
+val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-300, fcount=args.fcount, aug=args.aug,ct=criterion)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
 
 trainer = ModuleTrainer(model)
 
-chk = ModelCheckpoint(directory="weights", monitor="val_loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar', verbose=1)
+chk = ModelCheckpoint(directory="weights", monitor="loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar', verbose=1)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)

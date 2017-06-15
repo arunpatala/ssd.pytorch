@@ -31,7 +31,7 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, phase, base, extras, head, num_classes, size=300):
+    def __init__(self, phase, base, extras, head, num_classes, size=300, ct=None):
         super(SSD, self).__init__()
         self.phase = phase
         self.num_classes = num_classes
@@ -40,6 +40,7 @@ class SSD(nn.Module):
         elif size==1200: v=v3
         elif size==600: v = v600
         elif size==900: v = v900
+        self.ct = ct
         
         v = vXXX
         v['min_dim'] = size
@@ -89,7 +90,7 @@ class SSD(nn.Module):
         loc = list()
         conf = list()
         self.imgs = x
-        
+        self.ct.imgs = x
         # apply vgg up to conv4_3 relu
         #gpustat.print_gpustat(json=False)
         #gc.collect()
@@ -279,7 +280,7 @@ mbox = {
 }
 
 
-def build_ssd(phase, size=300, num_classes=21, scales=0, load=None, cuda=False):
+def build_ssd(phase, size=300, num_classes=21, scales=0, load=None, cuda=False, ct=None):
     torch.set_default_tensor_type('torch.FloatTensor')
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
@@ -290,7 +291,7 @@ def build_ssd(phase, size=300, num_classes=21, scales=0, load=None, cuda=False):
         extras[xxx] = extras[xxx][:2*scales] 
     ssd = SSD(phase, *multibox(vgg(base[str(xxx)], 3),
                                 add_extras(extras[str(xxx)], 1024),
-                                mbox[str(xxx)], num_classes), num_classes, size=size)
+                                mbox[str(xxx)], num_classes), num_classes, size=size, ct=ct)
     if cuda: ssd.cuda()
     if load is not None: 
         ssd.load_state_dict(torch.load(load))

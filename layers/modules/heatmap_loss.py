@@ -6,11 +6,13 @@ from data import v2 as cfg
 from ..box_utils import match, log_sum_exp, point_form
 from random import random
 GPU = False
+from PIL import Image
 if torch.cuda.is_available():
     GPU = True
     #torch.set_default_tensor_type('torch.cuda.FloatTensor')
 import numpy as np
 from polarbear import *
+import os
 
 class HeatMapLoss(nn.Module):
     """SSD Weighted Loss Function
@@ -36,29 +38,27 @@ class HeatMapLoss(nn.Module):
     """
 
 
-    def __init__(self, num_classes, overlap_thresh, prior_for_matching, 
-                    bkg_label, neg_mining, neg_pos, neg_overlap, encode_target, 
-                    neg_thresh=None, alpha=1, mids=None, dim=600, fmap=None):
+    def __init__(self, num_classes, dim=600, fmap=None,
+                    neg=True, hneg=True, vor=False, 
+                    dir="weights/logs_", ds=None):
         super(HeatMapLoss, self).__init__()
         self.num_classes = num_classes
-        self.threshold = overlap_thresh
-        self.background_label = bkg_label
-        self.encode_target = encode_target
-        self.use_prior_for_matching  = prior_for_matching
-        self.do_neg_mining = neg_mining
-        self.negpos_ratio = neg_pos
-        self.neg_overlap = neg_overlap
-        self.variance = cfg['variance']
-        self.alpha = alpha
-        if neg_thresh is not None: self.neg_thresh = neg_thresh
-        else: self.neg_thresh = overlap_thresh
-        self.mids = mids
         self.sf = nn.Softmax()
         self.dim = dim
         self.fmap = [100,56]
-        self.neg = True
-        self.vor = False
-        self.hneg = True
+        self.neg = neg
+        self.vor = vor
+        self.hneg = hneg
+        self.phase = "train"
+        self.batch = 0
+        self.dir = dir+"{phase}"
+        os.makedirs(self.dir.format(phase="train"),exist_ok=True)
+        os.makedirs(self.dir.format(phase="val"),exist_ok=True)
+        self.aimg = None
+        
+    def set_phase(self, phase):
+        self.phase = phase
+        self.batch = 0
 
     def forward1(self, predictions, targets):
         try:
@@ -78,45 +78,62 @@ class HeatMapLoss(nn.Module):
             ground_truth (tensor): Ground truth boxes and labels for a batch,
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
-        
+        self.batch += 1
         loc_data, conf_data, priors = predictions
         loc_data, conf_data, priors = loc_data.cpu(), conf_data.cpu(), priors.cpu()
         targets = targets.cpu()
         self.conf_data = conf_data
         
+        
         i = self.fmap[0]
         conf_data = conf_data[0,:(i*i)].view((i,i,-1))
-        aimg = self.aimg(conf_data, targets[0])
+        
+        fpath = self.fpath()
+        aimg = self.aimg
+        aimg.plot(save=fpath.format(type='aimg'))
+        #torch.save(aimg, fpath.format(type='aimg')+".th")
+        
+        hmimg = self.hmimg(conf_data).wann(aimg.ann)
+        hmimg.plot(save=fpath.format(type='hmimg'))
+        torch.save(hmimg, fpath.format(type='hmimg')+".th")
+        
         
         if self.neg:
-            nimg = aimg.append(aimg.negdist(d=50, ratio=1))
-            nann = nimg.resize(i).ann
-        
+            nimg = aimg.neg(ratio=1, minn=2)
+            nimg.plot(save=fpath.format(type='nimg'))
+            aimg = aimg.append(nimg.ann)
+            
+            
         if self.hneg:
-            hnimg = aimg.resize(i).append(aimg.resize(i).hneg(d=10, ratio=1)).resize(self.dim)
-            nann = nann.append(hnimg.resize(i).ann)
-        #naimg.save('demo/tmp.jpg','demo/tmp.csv')
+            hnimg = hmimg.hneg(ratio=1, minn=2, th=True)
+            hnimg.plot(save=fpath.format(type='hnimg'))
+            aimg = aimg.append(hnimg.ann)
+            
         if self.vor:
-            nann = naimg.resize(i).ann
-            vann = aimg.ann.vor()
-            vimg =  AnnImg(aimg.img, vann)
-            nann = vimg.resize(i).ann
-        #print(nann.xy)
+            vimg = aimg.ann.vor()
+            vimg.plot(save=fpath.format(type='vimg'))
+            aimg = aimg.append(vimg.ann)
         
-        #logging
-        self.himg = aimg
-        self.pnimg = hnimg
+        aimg = aimg.fcenter()    
+        aimg.plot(save=fpath.format(type="pnimg"))
         
+        nann = aimg.resize(i).ann
         pred = []
         for x,y in np.clip(nann.xy,0,i-1):
             pred.append(conf_data[y,x])
         pred = torch.stack(pred,0)
         truth = Variable(torch.from_numpy(nann.cl+1).long())
         loss = F.cross_entropy(pred, truth , size_average=False) 
-        return loss/targets.size(1)
+        return loss/aimg.count
     
-    def aimg(self, conf, targets):
-        cd = self.sf(conf.view(-1,6)).view(conf.size())
+    def hmimg(self, conf):
+        cd = self.sf(conf.view(-1,self.num_classes)).view(conf.size())
         npimg=(cd.data[:,:,0]*255).round().numpy()
-        ann = Ann(dets=targets.data.numpy(), dim=self.fmap[0])
-        return AnnImg(npimg=npimg,ann=ann).resize(self.dim)
+        return AnnImg(npimg=npimg).resize(self.dim)
+    
+    def fpath(self):
+        dir = self.dir.format(phase=self.phase)        
+        fpath = dir+"/{phase}{batch}".format(batch=self.batch, phase=self.phase)
+        fpath = fpath + '{type}.jpg'
+        #print(fpath)
+        return fpath
