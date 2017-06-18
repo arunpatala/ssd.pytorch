@@ -14,6 +14,8 @@ import numpy as np
 from polarbear import *
 import os
 
+import logging
+        
 class HeatMapLoss(nn.Module):
     """SSD Weighted Loss Function
     Compute Targets:
@@ -52,13 +54,51 @@ class HeatMapLoss(nn.Module):
         self.phase = "train"
         self.batch = 0
         self.dir = dir+"{phase}"
-        os.makedirs(self.dir.format(phase="train"),exist_ok=True)
-        os.makedirs(self.dir.format(phase="val"),exist_ok=True)
+        os.makedirs(self.dir.format(phase="train"),exist_ok=False)
+        os.makedirs(self.dir.format(phase="val"),exist_ok=False)
         self.aimg = None
+        self.iid = None
+        self.x = None
+        self.y = None
+        self.loss = 0
+        self.cnt = 0
+        self.tp,self.fp,self.fn = 0,0,0
+        self.npos = 0
+        self.nneg = 0
+        self.nrneg = 0
+        self.nhneg = 0
+        
+        logger = logging.getLogger('heatmap')
+        hdlr = logging.FileHandler(self.dir.format(phase="_log.log"))
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        hdlr.setFormatter(formatter)
+        logger.addHandler(hdlr) 
+        logger.setLevel(logging.INFO)
+        logger.error('error: STARTING LOGGING')
+        logger.info('info: While this is just chatty')
+        self.logger = logger
+        self.anns = {}
         
     def set_phase(self, phase):
-        self.phase = phase
+        print(self.phase, self.loss/(self.cnt+1))
+        print("tp",self.tp,"fp",self.fp,"fn",self.fn)
+        print(self.npos, self.nneg)
+        tann = Ann(dets=None)
+        for iid in self.anns:
+            tann = tann.append(self.anns[iid])
+            print(iid,self.anns[iid].pn())
+        tann.save(self.dir.format(phase=self.phase+"_tann.csv"))
+        print(tann.pn())
+        self.tp,self.fp,self.fn = 0,0,0
+        self.anns = {}
+        self.loss = 0
+        self.cnt = 0
         self.batch = 0
+        self.npos = 0
+        self.nneg = 0
+        self.nrneg = 0
+        self.nhneg = 0
+        self.phase = phase
 
     def forward1(self, predictions, targets):
         try:
@@ -89,25 +129,38 @@ class HeatMapLoss(nn.Module):
         conf_data = conf_data[0,:(i*i)].view((i,i,-1))
         
         fpath = self.fpath()
+        img = img2Image(self.img)
+        img.save(fpath.format(type='aaimg'))
         aimg = self.aimg
         aimg.plot(save=fpath.format(type='aimg'))
         #torch.save(aimg, fpath.format(type='aimg')+".th")
         
         hmimg = self.hmimg(conf_data).wann(aimg.ann)
         hmimg.plot(save=fpath.format(type='hmimg'))
+        pnann, plot = hmimg.hm_pn(bg=aimg)
+        self.anns[self.iid] = self.anns.get(self.iid,Ann(dets=None)).append(pnann) 
+        tp,fp,fn = pnann.pn()
+        self.tp += tp
+        self.fp += fp
+        self.fn += fn
+        self.logger.info(str(self.batch) + " tp " + str(self.tp) + " fp " + str(self.fp) +   " fn "  +str(self.fn)
+                          + " prec " + str(self.tp/(self.tp+self.fp+1)) + " recall " + str(self.tp/(self.tp+self.fn+1)))
+        plot.save(fpath.format(type='primg'))
         torch.save(hmimg, fpath.format(type='hmimg')+".th")
         
         
         if self.neg:
-            nimg = aimg.neg(ratio=1, minn=2)
+            nimg = aimg.neg(ratio=1, minn=1)
             nimg.plot(save=fpath.format(type='nimg'))
             aimg = aimg.append(nimg.ann)
+            self.nrneg += nimg.count
             
             
         if self.hneg:
-            hnimg = hmimg.hneg(ratio=1, minn=2, th=True)
+            hnimg = hmimg.hneg(ratio=1, minn=1, th=True)
             hnimg.plot(save=fpath.format(type='hnimg'))
             aimg = aimg.append(hnimg.ann)
+            self.nhneg += hnimg.count
             
         if self.vor:
             vimg = aimg.ann.vor()
@@ -119,12 +172,25 @@ class HeatMapLoss(nn.Module):
         
         nann = aimg.resize(i).ann
         pred = []
+        self.npos += nann.fclass(0).count
+        self.nneg += nann.fclass(-1).count
+        self.logger.info(str(self.batch) + " pos " + str(self.npos) + " rneg " + str(self.nrneg) + " hneg " + str(self.nhneg) ) 
+        self.logger.info(str(self.batch) +" tpos " + str(hmimg.count) + " rneg " + str(nimg.count) + " hneg " + str(hnimg.count))
         for x,y in np.clip(nann.xy,0,i-1):
             pred.append(conf_data[y,x])
-        pred = torch.stack(pred,0)
-        truth = Variable(torch.from_numpy(nann.cl+1).long())
+        if len(pred) ==0: 
+            pred = [conf_data[0,0]]
+            pred = torch.stack(pred,0)
+            truth = Variable(torch.from_numpy(np.array([0])).long()) 
+        else:
+            pred = torch.stack(pred,0)
+            truth = Variable(torch.from_numpy(nann.cl+1).long())
+        #print(pred, truth)
         loss = F.cross_entropy(pred, truth , size_average=False) 
-        return loss/aimg.count
+        loss = loss/max(aimg.count,1)
+        self.loss += loss.data[0]
+        self.cnt += 1
+        return loss
     
     def hmimg(self, conf):
         cd = self.sf(conf.view(-1,self.num_classes)).view(conf.size())
@@ -133,7 +199,17 @@ class HeatMapLoss(nn.Module):
     
     def fpath(self):
         dir = self.dir.format(phase=self.phase)        
-        fpath = dir+"/{phase}{batch}".format(batch=self.batch, phase=self.phase)
+        fpath = dir+"/{phase}_{batch}_{iid}_{x}_{y}_".format(
+            batch=self.batch, phase=self.phase, iid=self.iid, x=self.x, y = self.y)
         fpath = fpath + '{type}.jpg'
         #print(fpath)
         return fpath
+    
+def img2Image(img):
+    #print(img.size())
+    C,H,W, = img.size()
+    rgb_means = (104, 117, 123)
+    new_img = img.clone().numpy().transpose((1,2,0))
+    new_img += rgb_means
+    return Image.fromarray(new_img.astype('uint8'))
+

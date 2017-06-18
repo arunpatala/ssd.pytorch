@@ -86,7 +86,7 @@ class SLDetections(data.Dataset):
 
 class SLDetection(data.Dataset):
 
-    def __init__(self, aimg, tile=1000, st=500, fcount=3, aug=False):
+    def __init__(self, aimg, tile=1000, st=500, fcount=0, aug=False, ct=None):
         self.augs = None
         if aug: 
             self.augs = SSDAugmentation(tile)
@@ -103,9 +103,11 @@ class SLDetection(data.Dataset):
                 self.xy.append((x,y))
 
         self.wh = set()
+        self.ct = ct
 
     def __getitem__(self, index):
         aimg = self.ids[index]
+        if self.ct is not None: self.ct.aimg = aimg
         target = aimg.ann.ssd(self.tile).float()
         img = aimg.np(t=False)
         height, width, _ = img.shape
@@ -124,17 +126,7 @@ class SLDetection(data.Dataset):
                 img = img1
                 target = target1
         l = len(self.wh)
-        height, width, _ = img.shape
-        anno = (target[:,:4] * height/10).round() * 10
-        w = anno[:,2] - anno[:,0]
-        h = anno[:,3] - anno[:,1]
-
-        wh = set(sorted(list(zip(w.tolist(), w.tolist()))))
-        self.wh.update(wh)
-        wh = set(sorted(list(zip(h.tolist(), h.tolist()))))
-        self.wh.update(wh)
-        #if(len(self.wh)!=l): print(self.wh)
-        
+                
 
 
         #if self.transform is not None:
@@ -145,7 +137,8 @@ class SLDetection(data.Dataset):
 
 
         if target.nelement() == 0:
-            target = torch.FloatTensor([[0,0,0.0000001,0.0000001,4]]) 
+            #print("target empty")
+            target = torch.FloatTensor([[-1,-1,-1,-1,0]]) 
         #if self.target_transform is not None:
         #    target = self.target_transform(target, width, height)
             # target = self.target_transform(target, width, height)
@@ -201,3 +194,86 @@ class SLTest(data.Dataset):
 
     def __len__(self):
         return len(self.ids)
+
+
+
+
+class SLHalf(data.Dataset):
+
+    def __init__(self, dataset="all", tile=800, st=700, fcount=0, aug=False, ct=None, half=0, limit=None, dbox=0, top=None):
+        
+        if aug: self.augs = SSDAugmentation(tile)
+        else: self.augs = None
+        self.half = half
+        self.ids = list()
+        self.tile = tile
+        self.dbox= dbox
+        ds = DataSource()
+        aimgs = ds.dataset(dataset=dataset)
+        if top is not None: 
+            aimgs.iids = sorted(aimgs.counts(take=top)[:,0])
+            
+            print("top",aimgs.iids)
+        self.aimgs = aimgs
+        if limit is not None: aimgs.iids = aimgs.iids[:limit]
+        for aimg, iid in tqdm(aimgs):
+            if aimg.ann.sc == 0: continue
+            aimg = aimg.rescale().dbox(-self.dbox).bcrop()[half]            
+            for aimg,x,y in aimg.tile(tile,st):
+                aimg = aimg.fpups().fcenter()
+                if aimg.count >= fcount:
+                    self.ids.append((iid,x,y))
+                    
+        self.ct = ct
+        self.half = half
+        #shuffle(self.ids)
+
+    def __getitem__(self, index):
+        
+        iid,x,y = self.ids[index]
+        #print(iid,x,y)
+        aimg = self.aimgs.aimg(iid)[0].rescale().dbox(-self.dbox).bcrop()[self.half]
+        aimg = aimg.fpups().oneclass().cropd(x,y,self.tile)
+        #aimg,_ = self.aimgs.aimg(iid)
+        #aimg = self.ids[index]
+        iid,x,y = self.ids[index]
+        if self.ct is not None: 
+            self.ct.aimg = aimg
+            self.ct.iid = iid
+            self.ct.x = x
+            self.ct.y = y
+            
+        target = aimg.ann.ssd(self.tile).float()
+        img = aimg.np(t=False)
+        height, width, _ = img.shape
+        img1 = img
+        target1 = target
+
+
+
+        if target.nelement() == 0:
+            #print("target empty")
+            target = torch.FloatTensor([[-1,-1,-1,-1,0]]) 
+        if self.augs is not None:
+                img = img.transpose(2, 0, 1)
+                img, target = self.augs(img, target.numpy())
+                img = img.transpose(1, 2, 0)
+                img = img.copy()
+                
+
+
+        #if self.transform is not None:
+            #img = cv2.resize(np.array(img), (self.tile, self.tile)).astype(np.float32)
+        img -= (104, 117, 123)
+        img = img.transpose(2, 0, 1)
+        img = torch.from_numpy(img).squeeze().float()
+        if self.ct is not None: self.ct.img = img
+        #if self.target_transform is not None:
+        #    target = self.target_transform(target, width, height)
+            # target = self.target_transform(target, width, height)
+
+        return img, target
+
+    def __len__(self):
+        return len(self.ids)
+

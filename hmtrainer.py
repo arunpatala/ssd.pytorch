@@ -20,7 +20,7 @@ import os
 from torchvision import datasets
 
 from data import VOCroot, v2, v1, AnnotationTransform, VOCDetection, detection_collate, BaseTransform, AnnTensorTransform
-from data import SLDetection
+from data import SLHalf
 from layers import MultiBoxLoss, HeatMapLoss
 from ssd import build_ssd
 from hm import PosNeg
@@ -52,13 +52,18 @@ parser.add_argument('--load', default=None, help='trained model')
 parser.add_argument('--iid', default=0, type=int, help='trained model')
 parser.add_argument('--dataset', default='all',  help='dataset to use')
 parser.add_argument('--mids', default=False,  type=bool, help='use mids or not')
-parser.add_argument('--aug', default=False,  type=bool, help='use augmentation')
+parser.add_argument('--aug', default=True,  type=bool, help='use augmentation')
 parser.add_argument('--epochs', default=10,  type=int, help='num of epochs')
 parser.add_argument('--scale', default=1,  type=float, help='use scaled image')
 parser.add_argument('--neg', default=True,  type=bool, help='negative random')
 parser.add_argument('--hneg', default=True,  type=bool, help='hard negetive mining')
 parser.add_argument('--vor', default=False,  type=bool, help='use voronoi neg samples')
-parser.add_argument('--fcount', default=0,  type=int, help='min count of sealions')
+parser.add_argument('--fcount', default=3,  type=int, help='min count of sealions')
+parser.add_argument('--dbox', default=25,  type=int, help='diff box')
+parser.add_argument('--limit', default=None,  type=int, help='limit of dataloader')
+parser.add_argument('--top', default=None,  type=int, help='take images by count')
+parser.add_argument('--name', help='name to store current logs(required)')
+parser.add_argument('--tshuffle', default=True, type=bool, help='shuffle train data')
 args = parser.parse_args()
 print(args)
 #"""weights/sealions_95k.pth"""
@@ -69,7 +74,7 @@ cfg = (v1, v2)[args.version == 'v2']
 #criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
 criterion = HeatMapLoss(args.num_classes, dim=args.dim, ds=None,
                         neg=args.neg, hneg=args.hneg, vor=args.vor, 
-                        dir='weights/logs{iid}_'.format(iid=args.iid))
+                        dir='weights/logshm_{name}_'.format(name=args.name))
 
 #model = Network()
 print("building ssd")
@@ -107,27 +112,17 @@ if args.load is not None:
 
 from polarbear import *
 
-ds = DataSource()
-all = ds.dataset(args.dataset)
-aimg,_ = all.aimg(args.iid)
-aimg = aimg.rescale().fpups().oneclass().scale(args.scale)
-#aimg.ann.dbox(5)
-print("unique", aimg.ann.unique())
-print("max_th", aimg.ann.max_th().max())
-aimg, vimg = aimg.bcrop()
 
-print("train count",aimg.count)
-print("val count",vimg.count)
-aimg.plot(save="weights/trainer.png")
-vimg.plot(save="weights/validator.png")
-train_dataset = SLDetection(aimg, tile=args.dim, st=args.dim-300, fcount=args.fcount, aug=args.aug, ct=criterion)
-val_dataset = SLDetection(vimg, tile=args.dim, st=args.dim-300, fcount=args.fcount, aug=args.aug,ct=criterion)
-train_loader = DataLoader(train_dataset, batch_size=args.batch_size)
-val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
+train_dataset = SLHalf(half=0, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
+                       aug=args.aug, ct=criterion, limit=args.limit, dbox=args.dbox, top=args.top)
+val_dataset = SLHalf(half=1, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
+                     aug=args.aug,ct=criterion, limit=args.limit, dbox=args.dbox, top=args.top)
+train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=args.tshuffle)
+val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
 trainer = ModuleTrainer(model)
 
-chk = ModelCheckpoint(directory="weights", monitor="loss", filename='trainer_'+str(args.iid)+'_{epoch}_{loss}.pth.tar', verbose=1)
+chk = ModelCheckpoint(directory="weights", monitor="loss", filename='hmtrainer_'+args.name+'_{epoch}_train_{loss}.pth.tar', verbose=1)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
