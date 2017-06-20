@@ -42,8 +42,9 @@ class HeatMapLoss(nn.Module):
 
     def __init__(self, num_classes, dim=600, fmap=None,
                     neg=True, hneg=True, vor=False, 
-                    dir="weights/logs_", ds=None):
+                    dir="weights/logs_", ds=None, mode="ssd"):
         super(HeatMapLoss, self).__init__()
+        self.mode = mode
         self.num_classes = num_classes
         self.sf = nn.Softmax()
         self.dim = dim
@@ -82,13 +83,8 @@ class HeatMapLoss(nn.Module):
     def set_phase(self, phase):
         print(self.phase, self.loss/(self.cnt+1))
         print("tp",self.tp,"fp",self.fp,"fn",self.fn)
-        print(self.npos, self.nneg)
-        tann = Ann(dets=None)
-        for iid in self.anns:
-            tann = tann.append(self.anns[iid])
-            print(iid,self.anns[iid].pn())
-        tann.save(self.dir.format(phase=self.phase+"_tann.csv"))
-        print(tann.pn())
+        print("npos", self.npos, "nrneg", self.nrneg, "nhneg", self.nhneg)
+        self.plot_all()
         self.tp,self.fp,self.fn = 0,0,0
         self.anns = {}
         self.loss = 0
@@ -99,14 +95,45 @@ class HeatMapLoss(nn.Module):
         self.nrneg = 0
         self.nhneg = 0
         self.phase = phase
-
-    def forward1(self, predictions, targets):
-        try:
-            return self.forward1(predictions, targets)
-        except:
-            return Variable(torch.Tensor([0])) 
+        self.prep = None
 
     def forward(self, predictions, targets):
+        #print(predictions.size())
+        if self.mode == "ssd":
+            conf_data = predictions[0].cpu()
+            targets = targets.cpu()
+            return self.forward1(conf_data, targets)
+        elif self.mode == "unet":
+            targets = targets.cpu()
+            conf_data = predictions[0].permute(1,2,0)
+            #print(conf_data.size())
+            return self.forward1(conf_data, targets)
+        else: assert(self.mode == None) 
+
+
+    def plot_all(self):
+        tann = Ann(dets=None)
+        path = self.dir.format(phase=self.phase+"_all") 
+        os.makedirs(path,exist_ok=True)
+        path = path + os.sep + "{iid}.jpg"
+        ds = DataSource()
+        aimgs = ds.dataset(dataset="all")
+        for  iid in self.anns:
+            tann = tann.append(self.anns[iid])
+            aimg = aimgs.aimg(iid)[0]
+            aimg = self.prep(aimg)
+            tp,fp,fn = self.anns[iid].pn()
+            self.logger.info(str(iid) +" : "+str(tp)+","+str(fp)+","+str(fn))
+            aimg = aimg.wann(self.anns[iid])
+            aimg.plot(save=path.format(iid=iid), rect=False)
+            aimg.ann.save(path.format(iid=iid)+".csv")
+        tann.save(self.dir.format(phase=self.phase+"_tann.csv"))
+        print(tann.pn())
+        
+        
+            
+            
+    def forward1(self, predictions, targets):
         """HeatMapLoss Loss
         Args:
             predictions (tuple): A tuple containing loc preds, conf preds,
@@ -119,26 +146,25 @@ class HeatMapLoss(nn.Module):
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
         self.batch += 1
-        loc_data, conf_data, priors = predictions
-        loc_data, conf_data, priors = loc_data.cpu(), conf_data.cpu(), priors.cpu()
-        targets = targets.cpu()
-        self.conf_data = conf_data
-        
-        
-        i = self.fmap[0]
-        conf_data = conf_data[0,:(i*i)].view((i,i,-1))
-        
+        #print(predictions.size())
+        i = predictions.size(0)
+        conf_data = predictions.cpu()
+        #print(conf_data.size())
+        #print(conf_data)
         fpath = self.fpath()
         img = img2Image(self.img)
         img.save(fpath.format(type='aaimg'))
         aimg = self.aimg
+        #print("aimg",aimg.WH)
+        
         aimg.plot(save=fpath.format(type='aimg'))
         #torch.save(aimg, fpath.format(type='aimg')+".th")
         
         hmimg = self.hmimg(conf_data).wann(aimg.ann)
+        #print("hmimg",hmimg.WH)
         hmimg.plot(save=fpath.format(type='hmimg'))
-        pnann, plot = hmimg.hm_pn(bg=aimg)
-        self.anns[self.iid] = self.anns.get(self.iid,Ann(dets=None)).append(pnann) 
+        pnann, plot = hmimg.hm_pn(bg=aimg, p=75)
+        self.anns[self.iid] = self.anns.get(self.iid,Ann(dets=None)).append(pnann.dxy(-self.x, -self.y)) 
         tp,fp,fn = pnann.pn()
         self.tp += tp
         self.fp += fp
@@ -194,7 +220,9 @@ class HeatMapLoss(nn.Module):
     
     def hmimg(self, conf):
         cd = self.sf(conf.view(-1,self.num_classes)).view(conf.size())
+        #print(cd.size())
         npimg=(cd.data[:,:,0]*255).round().numpy()
+        #print(npimg)
         return AnnImg(npimg=npimg).resize(self.dim)
     
     def fpath(self):

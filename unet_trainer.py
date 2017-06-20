@@ -12,7 +12,7 @@ from torchsample.constraints import *
 from torchsample.initializers import *
 from torchsample.metrics import *
 import torch.nn.init as init
-
+from network import *
 
 import torch.optim as optim
 
@@ -22,11 +22,10 @@ from torchvision import datasets
 from data import VOCroot, v2, v1, AnnotationTransform, VOCDetection, detection_collate, BaseTransform, AnnTensorTransform
 from data import SLHalf
 from layers import MultiBoxLoss, HeatMapLoss
-from ssd2 import build_ssd
+from ssd import build_ssd
 from hm import PosNeg
 
 import argparse
-from main import Trainer
 
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
 parser.add_argument('--version', default='v2', help='conv11_2(v2) or pool6(v1) as last layer')
@@ -42,9 +41,9 @@ parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight dec
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
 parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss at each iteration')
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
-parser.add_argument('--save_folder', default='../weights/', help='Location to save checkpoint models')
+parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
 parser.add_argument('--num_classes', default=6, help='num of classes')
-parser.add_argument('--dim', default=800,type=int, help='dimension of input to model')
+parser.add_argument('--dim', default=512,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=0, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.33, type=float, help='threshold')
 parser.add_argument('--neg_th', default=0.30, type=float, help='neg threshold')
@@ -65,47 +64,21 @@ parser.add_argument('--limit', default=None,  type=int, help='limit of dataloade
 parser.add_argument('--top', default=None,  type=int, help='take images by count')
 parser.add_argument('--name', help='name to store current logs(required)')
 parser.add_argument('--tshuffle', default=True, type=bool, help='shuffle train data')
-parser.add_argument('--vgg', default=True, type=bool, help='load vgg model')
-parser.add_argument('--dilation', default=1, type=int, help='dilation rate')
-parser.add_argument('--val', default=True, type=bool, help='do validation')
 args = parser.parse_args()
 print(args)
 #"""weights/sealions_95k.pth"""
 cfg = (v1, v2)[args.version == 'v2']
 
 
-exp = args.save_folder + os.sep + args.name + os.sep
-os.makedirs(exp)
+
 #criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
 criterion = HeatMapLoss(args.num_classes, dim=args.dim, ds=None,
                         neg=args.neg, hneg=args.hneg, vor=args.vor, 
-                        dir=exp + "logs")
+                        dir='weights/logshm_{name}_'.format(name=args.name), mode="unet")
 
 #model = Network()
-print("building ssd")
-model = build_ssd('train', args.dim, args.num_classes, ct=criterion, dilation=args.dilation)
-print(model)
-#print(a+b)
-print("building ssd done")
-
-vgg_weights = torch.load(args.save_folder + args.basenet)
-print('Loading base network...')
-model.vgg.load_state_dict(vgg_weights)
-
-def xavier(param):
-    init.xavier_uniform(param)
-
-
-def weights_init(m):
-    if isinstance(m, nn.Conv2d):
-        xavier(m.weight.data)
-        m.bias.data.zero_()
-
-
-print('Initializing weights...')
-# initialize newly added layers' weights with xavier method
-model.extras.apply(weights_init)
-model.conf.apply(weights_init)  
+print("building unet")
+model = UNet(args.num_classes)
 
 if args.cuda:
     model.cuda()
@@ -123,25 +96,16 @@ from polarbear import *
 train_dataset = SLHalf(half=0, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
                        aug=args.aug, ct=criterion, limit=args.limit, dbox=args.dbox, top=args.top)
 val_dataset = SLHalf(half=1, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
-                     aug=False, ct=criterion, limit=args.limit, dbox=args.dbox, top=args.top)
+                     aug=args.aug,ct=criterion, limit=args.limit, dbox=args.dbox, top=args.top)
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=args.tshuffle)
-if args.val:
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
-else: val_loader = None
+val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
+trainer = ModuleTrainer(model)
+
+chk = ModelCheckpoint(directory="weights", monitor="loss", filename='hmtrainer_'+args.name+'_{epoch}_train_{loss}.pth.tar', verbose=1)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
-
-
-trainer = Trainer(model, criterion, cuda=args.cuda, lr=args.lr, 
-                  momentum=args.momentum, weight_decay=args.weight_decay, dpath=exp)
-
-trainer.train_val(train_loader, val_loader, args.epochs)
-
-
-trainer = ModuleTrainer(model)
-chk = ModelCheckpoint(directory=exp, monitor="loss", filename='{epoch}_train_{loss}.pth.tar', verbose=1)
 trainer.compile(loss=criterion,
                 optimizer=optimizer,
                 #optimizer='adadelta',
@@ -150,7 +114,9 @@ trainer.compile(loss=criterion,
                 #initializers=initializers,
                 #metrics=metrics, 
                 callbacks=[chk, PosNeg(model, criterion, val_dataset)])
+
 print("trainer compilation done")
+
 
 #val_dataset = VOCDetection(VOCroot, [('2007', 'test')], BaseTransform(
 #        ssd_dim, rgb_means), AnnTensorTransform())
