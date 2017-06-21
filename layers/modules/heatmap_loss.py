@@ -68,6 +68,7 @@ class HeatMapLoss(nn.Module):
         self.nneg = 0
         self.nrneg = 0
         self.nhneg = 0
+        self.nvneg = 0
         
         logger = logging.getLogger('heatmap')
         hdlr = logging.FileHandler(self.dir.format(phase="_log.log"))
@@ -94,6 +95,7 @@ class HeatMapLoss(nn.Module):
         self.nneg = 0
         self.nrneg = 0
         self.nhneg = 0
+        self.nvneg = 0
         self.phase = phase
         self.prep = None
 
@@ -175,11 +177,19 @@ class HeatMapLoss(nn.Module):
         torch.save(hmimg, fpath.format(type='hmimg')+".th")
         
         
+        
         if self.neg:
             nimg = aimg.neg(ratio=1, minn=1)
             nimg.plot(save=fpath.format(type='nimg'))
             aimg = aimg.append(nimg.ann)
             self.nrneg += nimg.count
+        
+        if self.vor:
+            vimg = hmimg.fcenter().vor(66,120)
+            #print(vimg)
+            aimg.append(vimg.ann).plot(save=fpath.format(type='vimg'), rect=False)
+            aimg = aimg.append(vimg.ann)
+            self.nvneg += vimg.count
             
             
         if self.hneg:
@@ -188,20 +198,16 @@ class HeatMapLoss(nn.Module):
             aimg = aimg.append(hnimg.ann)
             self.nhneg += hnimg.count
             
-        if self.vor:
-            vimg = aimg.ann.vor()
-            vimg.plot(save=fpath.format(type='vimg'))
-            aimg = aimg.append(vimg.ann)
         
         aimg = aimg.fcenter()    
-        aimg.plot(save=fpath.format(type="pnimg"))
+        aimg.plot(save=fpath.format(type="pnimg"), rect=False)
         
         nann = aimg.resize(i).ann
         pred = []
         self.npos += nann.fclass(0).count
         self.nneg += nann.fclass(-1).count
-        self.logger.info(str(self.batch) + " pos " + str(self.npos) + " rneg " + str(self.nrneg) + " hneg " + str(self.nhneg) ) 
-        self.logger.info(str(self.batch) +" tpos " + str(hmimg.count) + " rneg " + str(nimg.count) + " hneg " + str(hnimg.count))
+        self.logger.info(str(self.batch) + " pos " + str(self.npos) + " rneg " + str(self.nrneg) + " hneg " + str(self.nhneg) + " vneg "+ str(self.nvneg)) 
+        #self.logger.info(str(self.batch) +" tpos " + str(hmimg.count) + " rneg " + str(nimg.count) + " hneg " + str(hnimg.count))
         for x,y in np.clip(nann.xy,0,i-1):
             pred.append(conf_data[y,x])
         if len(pred) ==0: 

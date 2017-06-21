@@ -50,9 +50,9 @@ class SSD(nn.Module):
 
         self.conf = nn.ModuleList(head)
         self.enc = nn.Sequential(
-            nn.Conv2d(1024, 512, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.UpsamplingBilinear2d(scale_factor=2)            
+            nn.UpsamplingBilinear2d(scale_factor=2),
+            nn.Conv2d(1024, 1024, 3, padding=1),
+            nn.ReLU(inplace=True),            
         )
 
 
@@ -90,7 +90,7 @@ class SSD(nn.Module):
         
         s = self.L2Norm(x)
         sources.append(x)
-        #print("conf1", x.size())
+        print("conf1", x.size())
         #y = x
 
         # apply vgg up to fc7
@@ -100,8 +100,9 @@ class SSD(nn.Module):
         #z = self.enc(x)
         #yz = torch.cat([y,z],1)
         #sources.append(yz)
+        x = self.enc(x)
         sources.append(x)
-        #print("conf2", x.size())
+        print("conf2", x.size())
         
         # apply extra layers and cache source layer outputs
         for k, v in enumerate(self.extras):
@@ -152,18 +153,17 @@ def vgg(cfg, i, batch_norm=False, dilation=1):
     layers = []
     in_channels = i
     for j,v in enumerate(cfg):
-        print(j,v)
         if v == 'M':
             layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
         elif v == 'C':
             layers += [nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)]
         else:
-            if j<16:
+            if j<8:
                 conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
             else:
                 conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1, dilation=dilation)
             if batch_norm:
-                layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
+                layers += [conv2d, nn.Sequential(nn.BatchNorm2d(v), nn.ReLU(inplace=True))]
             else:
                 layers += [conv2d, nn.ReLU(inplace=True)]
             in_channels = v
@@ -250,7 +250,7 @@ mbox = {
 }
 
 
-def build_ssd(phase, size=300, num_classes=21, scales=0, load=None, cuda=False, ct=None, dilation=1):
+def build_ssd(phase, size=300, num_classes=21, scales=0, load=None, cuda=False, ct=None, dilation=1, batch_norm=False):
     torch.set_default_tensor_type('torch.FloatTensor')
     if phase != "test" and phase != "train":
         print("Error: Phase not recognized")
@@ -259,8 +259,8 @@ def build_ssd(phase, size=300, num_classes=21, scales=0, load=None, cuda=False, 
     if scales is not None: 
         xxx = 'X'
         extras[xxx] = extras[xxx][:2*scales] 
-    ssd = SSD(phase, *multibox(vgg(base[str(xxx)], 3, dilation=dilation),
-                                add_extras(extras[str(xxx)], 1024),
+    ssd = SSD(phase, *multibox(vgg(base[str(xxx)], 3, dilation=dilation, batch_norm=batch_norm),
+                                add_extras(extras[str(xxx)], 1024, batch_norm=batch_norm),
                                 mbox[str(xxx)], num_classes), num_classes, size=size, ct=ct)
     if cuda: ssd.cuda()
     if load is not None: 

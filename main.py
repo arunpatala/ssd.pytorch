@@ -21,7 +21,7 @@ class Trainer(object):
         self.momentum = momentum
         self.weight_decay = weight_decay
         self.dpath = dpath
-        self.filename = dpath + os.sep + 'model_epoch_{epoch}_{phase}_loss_{loss}.pth'
+        self.filename = dpath + os.sep + 'model_epoch_{epoch}_{step}_{phase}_loss_{loss}.pth'
 
         
     def train_val(self, train_loader, val_loader, epochs=1):
@@ -74,6 +74,8 @@ class Trainer(object):
             epoch_loss.append(loss.cpu().data[0])
             average = sum(epoch_loss) / len(epoch_loss)
             pbar.set_postfix(loss=average)
+            if step % 300 == 0: 
+                self.save(model, epoch, mode, average, step)
 
             #pbar.update(average)
             
@@ -81,7 +83,10 @@ class Trainer(object):
         average = sum(epoch_loss) / len(epoch_loss)
         #print(epoch_loss)
         print('loss: {average} (epoch: {epoch}, phase: {phase})'.format(average=average, epoch=epoch, phase=mode))
-        f = self.filename.format(epoch=epoch, phase=mode, loss= "%.3f" % average )
+        self.save(model, epoch, mode, average, "END")
+        
+    def save(self, model, epoch, mode, average, step):
+        f = self.filename.format(epoch=epoch, phase=mode, loss= "%.3f" % average, step =step)
         torch.save(model.state_dict(), f)
         print("model saved to "+f)
         #model.save_state_dict(f+".tar")

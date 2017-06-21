@@ -200,7 +200,7 @@ class SLTest(data.Dataset):
 
 class SLHalf(data.Dataset):
 
-    def __init__(self, dataset="all", tile=800, st=700, fcount=0, aug=False, ct=None, half=0, limit=None, dbox=0, top=None):
+    def __init__(self, dataset="all", tile=800, st=700, fcount=0, aug=False, ct=None, half=0, limit=None, dbox=0, top=None, scale=1):
         
         if aug: self.augs = SSDAugmentation(tile)
         else: self.augs = None
@@ -209,6 +209,9 @@ class SLHalf(data.Dataset):
         self.tile = tile
         self.dbox= dbox
         ds = DataSource()
+        def prep(aimg):
+            return aimg.rescale().scale(scale).dbox(-dbox).bcrop()[half]
+        self.prep = prep
         aimgs = ds.dataset(dataset=dataset)
         if top is not None: 
             aimgs.iids = sorted(aimgs.counts(take=top)[:,0])
@@ -217,8 +220,8 @@ class SLHalf(data.Dataset):
         self.aimgs = aimgs
         if limit is not None: aimgs.iids = aimgs.iids[:limit]
         for aimg, iid in tqdm(aimgs):
-            if aimg.ann.sc == 0: continue
-            aimg = aimg.rescale().dbox(-self.dbox).bcrop()[half]            
+            #if aimg.ann.sc == 0: continue
+            aimg = self.prep(aimg)        
             for aimg,x,y in aimg.tile(tile,st):
                 aimg = aimg.fpups().fcenter()
                 if aimg.count >= fcount:
@@ -226,13 +229,15 @@ class SLHalf(data.Dataset):
                     
         self.ct = ct
         self.half = half
+        self.ct.prep = prep
         #shuffle(self.ids)
 
     def __getitem__(self, index):
         
         iid,x,y = self.ids[index]
         #print(iid,x,y)
-        aimg = self.aimgs.aimg(iid)[0].rescale().dbox(-self.dbox).bcrop()[self.half]
+        aimg = self.aimgs.aimg(iid)[0]
+        aimg = self.prep(aimg)
         aimg = aimg.fpups().oneclass().cropd(x,y,self.tile)
         #aimg,_ = self.aimgs.aimg(iid)
         #aimg = self.ids[index]
@@ -242,6 +247,7 @@ class SLHalf(data.Dataset):
             self.ct.iid = iid
             self.ct.x = x
             self.ct.y = y
+            self.ct.prep = self.prep
             
         target = aimg.ann.ssd(self.tile).float()
         img = aimg.np(t=False)
@@ -272,6 +278,82 @@ class SLHalf(data.Dataset):
         #    target = self.target_transform(target, width, height)
             # target = self.target_transform(target, width, height)
 
+        return img, target
+
+    def __len__(self):
+        return len(self.ids)
+    
+    
+
+class SLSegmentation(data.Dataset):
+
+    def __init__(self, dataset="all", tile=800, st=700, fcount=0, aug=False, ct=None, half=0, limit=None, 
+                 top=None, scale=1, fpups=False, oneclass=True):
+        
+        if aug: self.augs = SSDAugmentation(tile)
+        else: self.augs = None
+        self.half = half
+        self.ids = list()
+        self.tile = tile
+        ds = DataSource()
+        def prep(aimg):
+             aimg = aimg.rescale().scale(scale).bcrop()[half]
+             if fpups: aimg=aimg.fpups()
+             if oneclass: aimg = aimg.oneclass()
+             return aimg
+        self.prep = prep
+        aimgs = ds.dataset(dataset=dataset)
+        if top is not None: 
+            aimgs.iids = sorted(aimgs.counts(take=top)[:,0])
+            print("top",aimgs.iids)
+        self.aimgs = aimgs
+        if limit is not None: aimgs.iids = aimgs.iids[:limit]
+        for aimg, iid in tqdm(aimgs):
+            #if aimg.ann.sc == 0: continue
+            aimg = self.prep(aimg)        
+            for aimg,x,y in aimg.tile(tile,st):
+                aimg = aimg.fpups().fcenter()
+                if aimg.count >= fcount:
+                    self.ids.append((iid,x,y))
+                    
+        
+        self.half = half
+        if ct is not None:
+            self.ct = ct
+            self.ct.prep = prep
+        #shuffle(self.ids)
+
+    def __getitem__(self, index):
+        
+        iid,x,y = self.ids[index]
+        aimg = self.aimgs.aimg(iid)[0]
+        aimg = self.prep(aimg)
+        aimg = aimg.cropd(x,y,self.tile)
+        
+        if self.ct is not None:
+            self.ct.aimg = aimg
+            self.ct.iid = iid
+            self.ct.x = x
+            self.ct.y = y
+            
+        img = aimg.np(t=False)
+        target = aimg.ann.ssd(self.tile).float()
+        
+        if self.augs is not None:
+                img = img.transpose(2, 0, 1)
+                img, target = self.augs(img, target.numpy())
+                img = img.transpose(1, 2, 0)
+                img = img.copy()
+                
+        img -= (104, 117, 123)
+        img = img.transpose(2, 0, 1)
+        img = torch.from_numpy(img).squeeze().float()
+        target = aimg.unet_mask().np()
+        target = torch.from_numpy(target).float()
+        if self.ct is not None: self.ct.img = img
+
+        #print(img.size(), target.size())
+        
         return img, target
 
     def __len__(self):

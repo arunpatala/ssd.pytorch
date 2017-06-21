@@ -19,12 +19,12 @@ import torch.optim as optim
 import os
 from torchvision import datasets
 
-from data import VOCroot, v2, v1, AnnotationTransform, VOCDetection, detection_collate, BaseTransform, AnnTensorTransform
-from data import SLHalf
-from layers import MultiBoxLoss, HeatMapLoss
+from data import SLSegmentation
+from layers import SegLoss
 from ssd2 import build_ssd
 from hm import PosNeg
 
+from unet import *
 import argparse
 from main import Trainer
 
@@ -44,7 +44,7 @@ parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='../weights/', help='Location to save checkpoint models')
 parser.add_argument('--num_classes', default=6, help='num of classes')
-parser.add_argument('--dim', default=800,type=int, help='dimension of input to model')
+parser.add_argument('--dim', default=512,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=0, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.33, type=float, help='threshold')
 parser.add_argument('--neg_th', default=0.30, type=float, help='neg threshold')
@@ -53,7 +53,7 @@ parser.add_argument('--load', default=None, help='trained model')
 parser.add_argument('--iid', default=0, type=int, help='trained model')
 parser.add_argument('--dataset', default='all',  help='dataset to use')
 parser.add_argument('--mids', default=False,  type=bool, help='use mids or not')
-parser.add_argument('--aug', default=True,  type=bool, help='use augmentation')
+parser.add_argument('--aug', default=False,  type=bool, help='use augmentation')
 parser.add_argument('--epochs', default=10,  type=int, help='num of epochs')
 parser.add_argument('--scale', default=1,  type=float, help='use scaled image')
 parser.add_argument('--neg', default=True,  type=bool, help='negative random')
@@ -72,62 +72,37 @@ parser.add_argument('--batch_norm', default=True, type=bool, help='use batch nor
 args = parser.parse_args()
 print(args)
 #"""weights/sealions_95k.pth"""
-cfg = (v1, v2)[args.version == 'v2']
 
 
 exp = args.save_folder + os.sep + args.name + os.sep
 os.makedirs(exp)
 #criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
-criterion = HeatMapLoss(args.num_classes, dim=args.dim, ds=None,
-                        neg=args.neg, hneg=args.hneg, vor=args.vor, 
-                        dir=exp + "logs")
+criterion = SegLoss(args.num_classes, dim=args.dim, dir=exp)
 
 #model = Network()
 print("building ssd")
-model = build_ssd('train', args.dim, args.num_classes, ct=criterion, dilation=args.dilation, batch_norm=args.batch_norm)
-print(model)
-#print(a+b)
-print("building ssd done")
-if args.vgg:
-    vgg_weights = torch.load(args.save_folder + args.basenet)
-    print('Loading base network...')
-    model.vgg.load_state_dict(vgg_weights)
-
-def xavier(param):
-    init.xavier_uniform(param)
-
-
-def weights_init(m):
-    if isinstance(m, nn.Conv2d):
-        xavier(m.weight.data)
-        m.bias.data.zero_()
-
-
-print('Initializing weights...')
-# initialize newly added layers' weights with xavier method
-model.extras.apply(weights_init)
-model.conf.apply(weights_init)  
+model = UNet(HyperParams())
 
 if args.cuda:
-    model.cuda()
-if args.load is not None:
-    if args.cuda: 
-        model.load_my_state_dict(torch.load(args.load))
-    else: 
-        model.load_my_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
-        
-
+    model = model.cuda()
 
 from polarbear import *
 
+if args.load is not None:
+    if args.cuda: 
+        model.load_state_dict(torch.load(args.load))
+    else: 
+        model.load_state_dict(torch.load(args.load, map_location=lambda storage, loc: storage))
 
-train_dataset = SLHalf(half=0, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
-                       aug=args.aug, ct=criterion, limit=args.limit, dbox=args.dbox, top=args.top, scale=args.scale)
+
+
+train_dataset = SLSegmentation(half=0, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
+                       aug=args.aug,  limit=args.limit,top=args.top, scale=args.scale, ct=criterion)
 
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=args.tshuffle)
 if args.val:
-    val_dataset = SLHalf(half=1, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
-                     aug=False, ct=criterion, limit=args.limit, dbox=args.dbox, top=args.top, scale=args.scale)
+    val_dataset = SLSegmentation(half=1, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
+                     aug=False, limit=args.limit, top=args.top, scale=args.scale,ct=criterion)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 else: val_loader = None
 
