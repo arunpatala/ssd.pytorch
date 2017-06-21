@@ -53,6 +53,10 @@ class SegLoss(nn.Module):
         os.makedirs(self.dir.format(phase="train"),exist_ok=False)
         os.makedirs(self.dir.format(phase="val"),exist_ok=False)
         self.iid,self.x,self.y = 0,0,0
+        self.bce_loss = nn.BCELoss()
+        self.log_loss=False
+        self.dice_loss=True
+        self.jaccard_loss=False
             
     def set_phase(self, phase):
         self.phase = phase   
@@ -76,7 +80,7 @@ class SegLoss(nn.Module):
         mpred = pred[0][0] * (target[0]!=127).float()
         self.mpred = mpred.data.cpu().numpy()
         self.save()
-        return self.bc(mpred, (target[0]==255).float())
+        return self.cls_loss((target[0]==255).float(), mpred)
     
     def save(self):
         fpath = self.fpath()
@@ -96,6 +100,23 @@ class SegLoss(nn.Module):
         #print(fpath)
         return fpath
     
+    def cls_loss(self, y, y_pred):
+        loss = 0.
+        if self.log_loss:
+            loss += self.bce_loss(y_pred, y)
+        if self.dice_loss:
+            intersection = (y_pred * y).sum()
+            uwi = y_pred.sum() + y.sum()  # without intersection union
+            if uwi[0] != 0:
+                loss += (1 - intersection / uwi)
+        if self.jaccard_loss:
+            intersection = (y_pred * y).sum()
+            union = y_pred.sum() + y.sum() - intersection
+            if union[0] != 0:
+                loss += (1 - intersection / union)
+        
+        return loss
+
   
     
 def img2Image(img):
