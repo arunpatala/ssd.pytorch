@@ -305,6 +305,52 @@ class Zoom(object):
 
         return image, boxes, labels
 
+class Zoom1(object):
+
+    def __init__(self, bmin=30, bmax=200, tile=900):
+        self.bmin = bmin
+        self.bmax = bmax
+        self.tile = tile
+
+    def __call__(self, image, boxes, labels):
+        bmin, bmax = self.bmin, self.bmax
+
+        depth, height, width = image.shape
+        w = ((boxes[:,2]-boxes[:,0])*width).round().astype('int32')
+        wmin, wmax = w.min(), w.max()
+        self.min_zoom = bmin/wmin
+        self.max_zoom = bmax/wmax
+
+        h = ((boxes[:,3]-boxes[:,1])*height).astype('int32')
+        hmin, hmax = h.min(), h.max()
+        self.min_zoom = max(bmin/hmin, self.min_zoom)
+        self.max_zoom = min(bmax/hmax, self.max_zoom)
+
+
+        #print("h", self.min_zoom, self.max_zoom, min(hmin, wmin), max(hmax, wmax))
+
+        ratio = random.uniform(self.min_zoom, self.max_zoom)
+        w = int(width * ratio)
+        w = max(w, self.tile+1)
+        w = min(w, 2*self.tile)
+        h = w
+
+        img = Image.fromarray(np.transpose(image,(1,2,0)).astype('uint8'))
+        img = img.resize((w,h))
+        w = ((boxes[:,2]-boxes[:,0])*w).round().astype('int32')
+        wmin, wmax = w.min(), w.max()
+
+        h = ((boxes[:,3]-boxes[:,1])*h).astype('int32')
+        hmin, hmax = h.min(), h.max()
+
+        #print("hq", min(hmin, wmin), max(hmax, wmax))
+
+
+
+        image = np.asarray(img, dtype = np.float)
+        image = np.transpose(image, (2,0,1))
+
+        return image, boxes, labels
 
 
 class RandomMirror(object):

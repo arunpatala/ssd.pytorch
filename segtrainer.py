@@ -58,7 +58,7 @@ parser.add_argument('--epochs', default=10,  type=int, help='num of epochs')
 parser.add_argument('--scale', default=1,  type=float, help='use scaled image')
 parser.add_argument('--neg', default=True,  type=bool, help='negative random')
 parser.add_argument('--hneg', default=False,  type=bool, help='hard negetive mining')
-parser.add_argument('--vor', default=False,  type=bool, help='use voronoi neg samples')
+parser.add_argument('--vor', default=8,  type=bool, help='use voronoi neg samples')
 parser.add_argument('--fcount', default=3,  type=int, help='min count of sealions')
 parser.add_argument('--dbox', default=30,  type=int, help='diff box')
 parser.add_argument('--limit', default=None,  type=int, help='limit of dataloader')
@@ -71,16 +71,12 @@ parser.add_argument('--val', default=True, type=bool, help='do validation')
 parser.add_argument('--batch_norm', default=True, type=bool, help='use batch norm')
 args = parser.parse_args()
 print(args)
-#"""weights/sealions_95k.pth"""
-
 
 exp = args.save_folder + os.sep + args.name + os.sep
 os.makedirs(exp)
 #criterion = MultiBoxLoss(args.num_classes, args.th, True, 0, True, args.neg_pos, 0.5, False, alpha=args.alpha, neg_thresh=args.neg_th, mids=args.mids)
 criterion = SegLoss(args.num_classes, dim=args.dim, dir=exp)
 
-#model = Network()
-print("building ssd")
 model = UNet(HyperParams())
 
 if args.cuda:
@@ -97,12 +93,12 @@ if args.load is not None:
 
 
 train_dataset = SLSegmentation(half=0, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
-                       aug=args.aug,  limit=args.limit,top=args.top, scale=args.scale, ct=criterion)
+                       aug=args.aug,  limit=args.limit,top=args.top, scale=args.scale, ct=criterion, vor=args.vor)
 
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=args.tshuffle)
 if args.val:
     val_dataset = SLSegmentation(half=1, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
-                     aug=False, limit=args.limit, top=args.top, scale=args.scale,ct=criterion)
+                     aug=False, limit=args.limit, top=args.top, scale=args.scale,ct=criterion, vor=args.vor)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 else: val_loader = None
 

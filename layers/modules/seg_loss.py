@@ -57,11 +57,17 @@ class SegLoss(nn.Module):
         self.log_loss=False
         self.dice_loss=True
         self.jaccard_loss=False
+        self.pos = 0
+        self.neg = 0
+        self.do_cutoff = True
             
     def set_phase(self, phase):
-        self.phase = phase   
+        self.phase = phase
+        self.batch = 0   
+        self.pos = 0
+        self.neg = 0
              
-    def forward(self, pred, target):
+    def forward(self, pred, target, b=16):
         """HeatMapLoss Loss
         Args:
             predictions (tuple): A tuple containing loc preds, conf preds,
@@ -73,24 +79,54 @@ class SegLoss(nn.Module):
             ground_truth (tensor): Ground truth boxes and labels for a batch,
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
-        
         self.batch += 1
-        self.pred = pred[0][0].data.cpu().numpy()
-        #print(pred.size(), target.size())
-        mpred = pred[0][0] * (target[0]!=127).float()
-        self.mpred = mpred.data.cpu().numpy()
-        self.save()
-        return self.cls_loss((target[0]==255).float(), mpred)
+        pred = pred[0,0,b:-b,b:-b]
+        target = target[0,b:-b,b:-b]
+        torch.save([pred,target],"tmp.th")
+        
+        mask = self.get_mask(pred, target)
+        mask = Variable(mask.float()).cuda()
+        mpred = pred * mask
+        
+        self.save(pred, target, mpred)
+        return self.cls_loss((target==255).float(), mpred)
     
-    def save(self):
+    def save(self, pred, target, mpred):
+        if self.batch % 300 == 0:
+            print(self.batch, self.pos/(self.neg+1))
+        self.pos += (target.data==255).sum()
+        self.neg += ((target.data==0) & (mpred.data!=0)).sum()
         fpath = self.fpath()
         img = img2Image(self.img)
         img.save(fpath.format(type='aaimg'))
         self.aimg.plotc().save(fpath.format(type="aimg"))
-        self.aimg.unet_mask().save(fpath.format(type="mimg"))
-        Image.fromarray((self.pred*255).astype('uint8')).save(fpath.format(type="pred"))
-        Image.fromarray((self.mpred*255).astype('uint8')).save(fpath.format(type="mpred"))
         
+        
+        pred = pred.data.cpu().numpy()
+        mpred = mpred.data.cpu().numpy()
+        target = target.data.cpu().numpy()
+        Image.fromarray((target).astype('uint8')).save(fpath.format(type="mimg"))
+        Image.fromarray((pred*255).astype('uint8')).save(fpath.format(type="pred"))
+        Image.fromarray((mpred*255).astype('uint8')).save(fpath.format(type="mpred"))
+        
+    
+    def get_mask(self,p,t):
+        mask1 = self.cutoff(p,t)
+        mask2 = self.cutoff(p,t,True)
+        mask3 = t.data==255
+        mask = mask1 | mask2 | mask3
+        return mask
+ 
+    def cutoff(self, p,t, rand=False):
+        tdata = t.data
+        pdata = p.data
+        npos = (tdata==255).int().sum()
+        pred = pdata.clone()
+        if rand: pred = torch.rand(pred.size()).cuda()
+        pred[tdata!=0] = 0
+        cutoff = pred.view(-1).sort(0,descending=True)[0][npos]
+        mask = (pred>cutoff) 
+        return mask
     
     def fpath(self):
         dir = self.dir.format(phase=self.phase)        
@@ -106,9 +142,8 @@ class SegLoss(nn.Module):
             loss += self.bce_loss(y_pred, y)
         if self.dice_loss:
             intersection = (y_pred * y).sum()
-            uwi = y_pred.sum() + y.sum()  # without intersection union
-            if uwi[0] != 0:
-                loss += (1 - intersection / uwi)
+            uwi = y_pred.sum() + y.sum() + 1 # without intersection union
+            loss += (1 - intersection / (uwi))
         if self.jaccard_loss:
             intersection = (y_pred * y).sum()
             union = y_pred.sum() + y.sum() - intersection
