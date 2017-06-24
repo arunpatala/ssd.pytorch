@@ -98,7 +98,7 @@ train_dataset = SLSegmentation(half=0, dataset=args.dataset, tile=args.dim, st=a
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=args.tshuffle)
 if args.val:
     val_dataset = SLSegmentation(half=1, dataset=args.dataset, tile=args.dim, st=args.dim-100, fcount=args.fcount, 
-                     aug=False, limit=args.limit, top=args.top, scale=args.scale,ct=criterion, vor=args.vor)
+                     aug=False, limit=args.limit, top=30, scale=args.scale,ct=criterion, vor=args.vor)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 else: val_loader = None
 

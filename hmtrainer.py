@@ -24,6 +24,7 @@ from data import SLHalf
 from layers import MultiBoxLoss, HeatMapLoss
 from ssd2 import build_ssd
 from hm import PosNeg
+from unet import *
 
 import argparse
 from main import Trainer
@@ -43,8 +44,8 @@ parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for S
 parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss at each iteration')
 parser.add_argument('--visdom', default=False, type=bool, help='Use visdom to for loss visualization')
 parser.add_argument('--save_folder', default='../weights/', help='Location to save checkpoint models')
-parser.add_argument('--num_classes', default=6, help='num of classes')
-parser.add_argument('--dim', default=800,type=int, help='dimension of input to model')
+parser.add_argument('--num_classes', default=2, help='num of classes')
+parser.add_argument('--dim', default=512,type=int, help='dimension of input to model')
 parser.add_argument('--alpha', default=0, type=int, help='multibox alpha for loss')
 parser.add_argument('--th', default=0.33, type=float, help='threshold')
 parser.add_argument('--neg_th', default=0.30, type=float, help='neg threshold')
@@ -82,6 +83,7 @@ criterion = HeatMapLoss(args.num_classes, dim=args.dim, ds=None,
                         neg=args.neg, hneg=args.hneg, vor=args.vor, 
                         dir=exp + "logs")
 
+"""
 #model = Network()
 print("building ssd")
 model = build_ssd('train', args.dim, args.num_classes, ct=criterion, dilation=args.dilation, batch_norm=args.batch_norm)
@@ -107,6 +109,9 @@ print('Initializing weights...')
 # initialize newly added layers' weights with xavier method
 model.extras.apply(weights_init)
 model.conf.apply(weights_init)  
+"""
+
+model = UNet(HyperParams(), sigmoid=False)
 
 if args.cuda:
     model.cuda()

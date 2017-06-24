@@ -11,7 +11,7 @@ import torch.nn.functional as F
 
 @attr.s(slots=True)
 class HyperParams:
-    classes = attr.ib(default=list(range(1)))
+    classes = attr.ib(default=list(range(2)))
     net = attr.ib(default='UNet')
     n_channels = attr.ib(default=3)  # max 20
     total_classes = 10
@@ -212,8 +212,9 @@ class UNet(BaseNet):
     module = UNetModule
     filter_factors = [1, 2, 4, 8, 16]
 
-    def __init__(self, hps: HyperParams):
+    def __init__(self, hps: HyperParams, sigmoid=True):
         super().__init__(hps)
+        self.sigmoid = sigmoid
         self.pool = nn.MaxPool2d(2, 2)
         self.pool_top = nn.MaxPool2d(hps.top_scale, hps.top_scale)
         self.upsample = nn.UpsamplingNearest2d(scale_factor=2)
@@ -255,7 +256,8 @@ class UNet(BaseNet):
         x_out = self.conv_final(x_out)
         b = self.hps.patch_border
         #return F.sigmoid(x_out[:, :, b:-b, b:-b])
-        return F.sigmoid(x_out)
+        if self.sigmoid: return F.sigmoid(x_out)
+        else: return x_out
 
 
 class Conv3BN(nn.Module):
