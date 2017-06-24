@@ -92,8 +92,8 @@ class SegLoss(nn.Module):
         return self.cls_loss((target==255).float(), mpred)
     
     def save(self, pred, target, mpred):
-        if self.batch % 300 == 0:
-            print(self.batch, self.pos/(self.neg+1))
+        #if self.batch % 300 == 0:
+        #    print(self.batch, self.pos/(self.neg+1))
         self.pos += (target.data==255).sum()
         self.neg += ((target.data==0) & (mpred.data!=0)).sum()
         fpath = self.fpath()

@@ -42,7 +42,7 @@ class HeatMapLoss(nn.Module):
 
     def __init__(self, num_classes, dim=600, fmap=None,
                     neg=True, hneg=True, vor=False, 
-                    dir="weights/logs_", ds=None, mode="ssd"):
+                    dir="weights/logs_", ds=None, mode="unet"):
         super(HeatMapLoss, self).__init__()
         self.mode = mode
         self.num_classes = num_classes
